@@ -48,7 +48,7 @@ var JitsiMeetExternalAPI = (function()
         this.iframeHolder.style.width = width + "px";
         this.iframeHolder.style.height = height + "px";
         this.frameName = "jitsiConferenceFrame" + JitsiMeetExternalAPI.id;
-        this.url = "//" + domain + "/";
+        this.url = "https://" + domain + "/";
         if(room_name)
             this.url += room_name;
         this.url += "#external";
