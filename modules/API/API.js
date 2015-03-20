@@ -22,7 +22,8 @@ var commands =
     muteVideo: APP.UI.toggleVideo,
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
-    toggleContactList: APP.UI.toggleContactList
+    toggleContactList: APP.UI.toggleContactList,
+    lockDown: APP.xmpp.lockDown
 };
 
 
