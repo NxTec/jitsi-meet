@@ -11,6 +11,7 @@ var XMPPEvents = require("../../service/xmpp/XMPPEvents");
 var eventEmitter = new EventEmitter();
 var connection = null;
 var authenticatedUser = false;
+var lockCode;
 
 function connect(jid, password) {
     connection = XMPP.createConnection();
@@ -149,7 +150,15 @@ var XMPP = {
             configDomain = config.hosts.domain;
         }
         var jid = configDomain || window.location.hostname;
-        connect(jid, null);
+        
+        if (Moderator.isModerator()) connect(jid, null);
+        else {
+            if (lockCode === '') console.error('Lockcode has not been set.');
+            connect(jid, lockCode);
+        }
+    },
+    setLockcode: function (code) {
+        lockCode = code;
     },
     createConnection: function () {
         var bosh = config.bosh || '/http-bind';
@@ -443,6 +452,11 @@ var XMPP = {
     },
     lockRoom: function (key, onSuccess, onError, onNotSupported) {
         connection.emuc.lockRoom(key, onSuccess, onError, onNotSupported);
+    },
+    lockDown: function (key, onSuccess, onError, onNotSupported) {
+        if (Moderator.isModerator()) {
+            lockRoom(key, onSuccess, onError, onNotSupported);
+        }
     },
     dial: function (to, from, roomName,roomPass) {
         connection.rayo.dial(to, from, roomName,roomPass);

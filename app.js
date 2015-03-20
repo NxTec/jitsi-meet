@@ -19,7 +19,7 @@ var APP =
 };
 
 function init() {
-    // THIS IS NEW
+    
     APP.RTC.start();
     APP.xmpp.start();
     APP.statistics.start();
