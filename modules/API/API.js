@@ -23,8 +23,15 @@ var commands =
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
     toggleContactList: APP.UI.toggleContactList,
-    lockDown: APP.xmpp.lockDown
+    lockDown: lockDown
 };
+
+function lockDown(lockCode) {
+    console.log('API.lockDown lockCode:', lockCode);
+    console.log(APP);
+
+    APP.xmpp.setLockCode(lockCode);
+}
 
 
 /**

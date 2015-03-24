@@ -271,11 +271,19 @@ module.exports = function(XMPP, eventEmitter) {
         onPresenceError: function (pres) {
             var from = pres.getAttribute('from');
             if ($(pres).find('>error[type="auth"]>not-authorized[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
-                console.log('on password required', from);
+                console.log('on password required from:', from);
+
                 var self = this;
-                eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
-                    self.doJoin(from, value);
-                });
+                var lockCode = APP.xmpp.getLockCode();
+                if (lockCode.length > 0) {
+                    console.log('strophe.emuc.onPresenceError entering locked room with code:', lockCode);
+                    self.doJoin(from, lockCode);
+                }
+                else {
+                    eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
+                        self.doJoin(from, value);
+                    });
+                }
             } else if ($(pres).find(
                 '>error[type="cancel"]>not-allowed[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
                 var toDomain = Strophe.getDomainFromJid(pres.getAttribute('to'));

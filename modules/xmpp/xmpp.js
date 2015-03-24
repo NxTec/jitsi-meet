@@ -11,7 +11,7 @@ var XMPPEvents = require("../../service/xmpp/XMPPEvents");
 var eventEmitter = new EventEmitter();
 var connection = null;
 var authenticatedUser = false;
-var lockCode;
+var lockCode = '';
 
 function connect(jid, password) {
     connection = XMPP.createConnection();
@@ -42,6 +42,12 @@ function connect(jid, password) {
             if(password)
                 authenticatedUser = true;
             maybeDoJoin();
+
+            // handle locking of room
+            //if (lockCode !== '' && lockCode.length > 0 && Moderator.isModerator()) {
+            //    console.log('xmpp.connect ... locking room ... code: ', lockCode);
+            //    lockRoom(code, onSuccess, onError, onNotSupported);
+            //}
         } else if (status === Strophe.Status.CONNFAIL) {
             if(msg === 'x-strophe-bad-non-anon-jid') {
                 anonymousConnectionFailed = true;
@@ -58,8 +64,6 @@ function connect(jid, password) {
         }
     });
 }
-
-
 
 function maybeDoJoin() {
     if (connection && connection.connected &&
@@ -150,12 +154,7 @@ var XMPP = {
             configDomain = config.hosts.domain;
         }
         var jid = configDomain || window.location.hostname;
-        
-        if (Moderator.isModerator()) connect(jid, null);
-        else {
-            if (lockCode === '') console.error('Lockcode has not been set.');
-            connect(jid, lockCode);
-        }
+        connect(jid, null);
     },
     setLockcode: function (code) {
         lockCode = code;
@@ -451,12 +450,17 @@ var XMPP = {
         connection.emuc.setSubject(topic);
     },
     lockRoom: function (key, onSuccess, onError, onNotSupported) {
+        console.log('xmpp.lockRoom ... lockCode:', lockCode);
+        if (lockCode !== '' && lockCode.length > 0) key = lockCode;
         connection.emuc.lockRoom(key, onSuccess, onError, onNotSupported);
     },
-    lockDown: function (key, onSuccess, onError, onNotSupported) {
-        if (Moderator.isModerator()) {
-            lockRoom(key, onSuccess, onError, onNotSupported);
-        }
+    setLockCode: function (code) {
+        console.log('xmpp.setLockCode code:', code);
+        lockCode = code;
+    },
+    getLockCode: function () {
+        console.log('xmpp.getLockCode: ', lockCode);
+        return lockCode;
     },
     dial: function (to, from, roomName,roomPass) {
         connection.rayo.dial(to, from, roomName,roomPass);

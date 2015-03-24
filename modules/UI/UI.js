@@ -453,11 +453,12 @@ function onMucLeft(jid) {
 function onLocalRoleChange(jid, info, pres, isModerator)
 {
 
-    console.info("My role changed, new role: " + info.role);
+    console.info("My role changed, new role: " + info.role + " isModerator: " + isModerator);
     onModeratorStatusChanged(isModerator);
     VideoLayout.showModeratorIndicator();
 
     if (isModerator) {
+        APP.xmpp.lockRoom();
         Authentication.closeAuthenticationWindow();
         messageHandler.notify(null, "notify.me",
             'connected', "notify.moderator");

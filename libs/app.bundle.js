@@ -20,7 +20,7 @@ var APP =
 };
 
 function init() {
-    // THIS IS NEW
+    
     APP.RTC.start();
     APP.xmpp.start();
     APP.statistics.start();
@@ -79,8 +79,16 @@ var commands =
     muteVideo: APP.UI.toggleVideo,
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
-    toggleContactList: APP.UI.toggleContactList
+    toggleContactList: APP.UI.toggleContactList,
+    lockDown: lockDown
 };
+
+function lockDown(lockCode) {
+    console.log('API.lockDown lockCode:', lockCode);
+    console.log(APP);
+
+    APP.xmpp.setLockCode(lockCode);
+}
 
 
 /**
@@ -1696,11 +1704,12 @@ function onMucLeft(jid) {
 function onLocalRoleChange(jid, info, pres, isModerator)
 {
 
-    console.info("My role changed, new role: " + info.role);
+    console.info("My role changed, new role: " + info.role + " isModerator: " + isModerator);
     onModeratorStatusChanged(isModerator);
     VideoLayout.showModeratorIndicator();
 
     if (isModerator) {
+        APP.xmpp.lockRoom();
         Authentication.closeAuthenticationWindow();
         messageHandler.notify(null, "notify.me",
             'connected', "notify.moderator");
@@ -15778,11 +15787,19 @@ module.exports = function(XMPP, eventEmitter) {
         onPresenceError: function (pres) {
             var from = pres.getAttribute('from');
             if ($(pres).find('>error[type="auth"]>not-authorized[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
-                console.log('on password required', from);
+                console.log('on password required from:', from);
+
                 var self = this;
-                eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
-                    self.doJoin(from, value);
-                });
+                var lockCode = APP.xmpp.getLockCode();
+                if (lockCode.length > 0) {
+                    console.log('strophe.emuc.onPresenceError entering locked room with code:', lockCode);
+                    self.doJoin(from, lockCode);
+                }
+                else {
+                    eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
+                        self.doJoin(from, value);
+                    });
+                }
             } else if ($(pres).find(
                 '>error[type="cancel"]>not-allowed[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
                 var toDomain = Strophe.getDomainFromJid(pres.getAttribute('to'));
@@ -16705,6 +16722,7 @@ var XMPPEvents = require("../../service/xmpp/XMPPEvents");
 var eventEmitter = new EventEmitter();
 var connection = null;
 var authenticatedUser = false;
+var lockCode = '';
 
 function connect(jid, password) {
     connection = XMPP.createConnection();
@@ -16735,6 +16753,12 @@ function connect(jid, password) {
             if(password)
                 authenticatedUser = true;
             maybeDoJoin();
+
+            // handle locking of room
+            //if (lockCode !== '' && lockCode.length > 0 && Moderator.isModerator()) {
+            //    console.log('xmpp.connect ... locking room ... code: ', lockCode);
+            //    lockRoom(code, onSuccess, onError, onNotSupported);
+            //}
         } else if (status === Strophe.Status.CONNFAIL) {
             if(msg === 'x-strophe-bad-non-anon-jid') {
                 anonymousConnectionFailed = true;
@@ -16751,8 +16775,6 @@ function connect(jid, password) {
         }
     });
 }
-
-
 
 function maybeDoJoin() {
     if (connection && connection.connected &&
@@ -16844,6 +16866,9 @@ var XMPP = {
         }
         var jid = configDomain || window.location.hostname;
         connect(jid, null);
+    },
+    setLockcode: function (code) {
+        lockCode = code;
     },
     createConnection: function () {
         var bosh = config.bosh || '/http-bind';
@@ -17136,7 +17161,17 @@ var XMPP = {
         connection.emuc.setSubject(topic);
     },
     lockRoom: function (key, onSuccess, onError, onNotSupported) {
+        console.log('xmpp.lockRoom ... lockCode:', lockCode);
+        if (lockCode !== '' && lockCode.length > 0) key = lockCode;
         connection.emuc.lockRoom(key, onSuccess, onError, onNotSupported);
+    },
+    setLockCode: function (code) {
+        console.log('xmpp.setLockCode code:', code);
+        lockCode = code;
+    },
+    getLockCode: function () {
+        console.log('xmpp.getLockCode: ', lockCode);
+        return lockCode;
     },
     dial: function (to, from, roomName,roomPass) {
         connection.rayo.dial(to, from, roomName,roomPass);
@@ -19320,6 +19355,7 @@ var strings = require('./utils/strings');
 var msg = require('./zlib/messages');
 var zstream = require('./zlib/zstream');
 
+var toString = Object.prototype.toString;
 
 /* Public constants ==========================================================*/
 /* ===========================================================================*/
@@ -19475,8 +19511,8 @@ var Deflate = function(options) {
 
 /**
  * Deflate#push(data[, mode]) -> Boolean
- * - data (Uint8Array|Array|String): input data. Strings will be converted to
- *   utf8 byte sequence.
+ * - data (Uint8Array|Array|ArrayBuffer|String): input data. Strings will be
+ *   converted to utf8 byte sequence.
  * - mode (Number|Boolean): 0..6 for corresponding Z_NO_FLUSH..Z_TREE modes.
  *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` meansh Z_FINISH.
  *
@@ -19514,6 +19550,8 @@ Deflate.prototype.push = function(data, mode) {
   if (typeof data === 'string') {
     // If we need to compress text, change encoding to utf8.
     strm.input = strings.string2buf(data);
+  } else if (toString.call(data) === '[object ArrayBuffer]') {
+    strm.input = new Uint8Array(data);
   } else {
     strm.input = data;
   }
@@ -19684,6 +19722,7 @@ var msg = require('./zlib/messages');
 var zstream = require('./zlib/zstream');
 var gzheader = require('./zlib/gzheader');
 
+var toString = Object.prototype.toString;
 
 /**
  * class Inflate
@@ -19818,7 +19857,7 @@ var Inflate = function(options) {
 
 /**
  * Inflate#push(data[, mode]) -> Boolean
- * - data (Uint8Array|Array|String): input data
+ * - data (Uint8Array|Array|ArrayBuffer|String): input data
  * - mode (Number|Boolean): 0..6 for corresponding Z_NO_FLUSH..Z_TREE modes.
  *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` meansh Z_FINISH.
  *
@@ -19856,6 +19895,8 @@ Inflate.prototype.push = function(data, mode) {
   if (typeof data === 'string') {
     // Only binary strings can be decompressed on practice
     strm.input = strings.binstring2buf(data);
+  } else if (toString.call(data) === '[object ArrayBuffer]') {
+    strm.input = new Uint8Array(data);
   } else {
     strm.input = data;
   }
