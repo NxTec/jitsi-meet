@@ -8,9 +8,9 @@ var config = {
         //call_control: 'callcontrol.webrtcdev.collaborate.center',
         //focus: 'focus.webrtcdev.collaborate.center' - defaults to 'focus.webrtcdev.collaborate.center'
     },
-//  getroomnode: function (path) { return 'someprefixpossiblybasedonpath'; },
-//  useStunTurn: true, // use XEP-0215 to fetch STUN and TURN server
-//  useIPv6: true, // ipv6 support. use at your own risk
+    getroomnode: function (path) { var regex = new RegExp("[\\?&]node=([^&#]*)"); var matches = regex.exec(window.location.search); console.log('custom getRoomNode node matches:', matches); return matches === null ? "" : decodeURIComponent(matches[1].replace(/\+/g, " ")); },
+    //  useStunTurn: true, // use XEP-0215 to fetch STUN and TURN server
+    //  useIPv6: true, // ipv6 support. use at your own risk
     useNicks: false,
     bosh: '//webrtcdev.collaborate.center/http-bind', // FIXME: use xep-0156 for that
     clientNode: 'http://jitsi.org/jitsimeet', // The name of client node advertised in XEP-0115 'c' stanza
