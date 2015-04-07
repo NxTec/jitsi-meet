@@ -38,7 +38,7 @@ $(document).ready(function () {
 
     APP.translation.init();
 
-    if(APP.API.isEnabled())
+    if(APP.API.isEnabled()) 
         APP.API.init();
 
     APP.UI.start(init);

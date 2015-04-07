@@ -272,12 +272,15 @@ RTCUtils.prototype.getUserMediaWithConstraints = function(
  * We ask for audio and video combined stream in order to get permissions and
  * not to ask twice.
  */
-RTCUtils.prototype.obtainAudioAndVideoPermissions = function() {
+RTCUtils.prototype.obtainAudioAndVideoPermissions = function(devices) {
     var self = this;
     // Get AV
 
+    if(!devices)
+        devices = ['audio', 'video'];
+
     this.getUserMediaWithConstraints(
-        ['audio', 'video'],
+        devices,
         function (stream) {
             self.successCallback(stream);
         },

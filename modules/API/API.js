@@ -178,6 +178,14 @@ var API = {
         return false;
     },
     /**
+     * Check whether audio-only session
+     * @returns {boolean}
+    //  */
+    // isAudioOnly: function () {
+    //     var search = location.search;
+    //     return search && search.indexOf("audioOnly") > -1;
+    // },
+    /**
      * Initializes the APIConnector. Setups message event listeners that will
      * receive information from external applications that embed Jitsi Meet.
      * It also sends a message to the external application that APIConnector

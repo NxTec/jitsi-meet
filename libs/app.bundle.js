@@ -39,7 +39,7 @@ $(document).ready(function () {
 
     APP.translation.init();
 
-    if(APP.API.isEnabled())
+    if(APP.API.isEnabled()) 
         APP.API.init();
 
     APP.UI.start(init);
@@ -234,6 +234,14 @@ var API = {
             return true;
         return false;
     },
+    /**
+     * Check whether audio-only session
+     * @returns {boolean}
+    //  */
+    // isAudioOnly: function () {
+    //     var search = location.search;
+    //     return search && search.indexOf("audioOnly") > -1;
+    // },
     /**
      * Initializes the APIConnector. Setups message event listeners that will
      * receive information from external applications that embed Jitsi Meet.
@@ -701,6 +709,7 @@ var RTC = {
     remoteStreams: {},
     localAudio: null,
     localVideo: null,
+    //isAudioOnly: false,
     addStreamListener: function (listener, eventType) {
         eventEmitter.on(eventType, listener);
     },
@@ -780,6 +789,13 @@ var RTC = {
     setVideoSrc: function (element, src) {
         this.rtcUtils.setVideoSrc(element, src);
     },
+    // setAudioOnly: function (audioOnly) {
+    //     this.isAudioOnly = audioOnly;
+    // },
+    isAudioOnly: function () {
+        var search = location.search;
+        return search && search.toLowerCase().indexOf("audioonly") > -1;
+    },
     dispose: function() {
         if (this.rtcUtils) {
             this.rtcUtils = null;
@@ -816,7 +832,8 @@ var RTC = {
         APP.UI.addListener(UIEvents.PINNED_ENDPOINT,
             DataChannels.handlePinnedEndpointEvent);
         this.rtcUtils = new RTCUtils(this);
-        this.rtcUtils.obtainAudioAndVideoPermissions();
+        console.log('in rtc.start audioOnly: ', this.isAudioOnly());
+        this.rtcUtils.obtainAudioAndVideoPermissions(this.isAudioOnly() ? ['audio'] : ['audio', 'video']);
     },
     muteRemoteVideoStream: function (jid, value) {
         var stream;
@@ -1159,12 +1176,15 @@ RTCUtils.prototype.getUserMediaWithConstraints = function(
  * We ask for audio and video combined stream in order to get permissions and
  * not to ask twice.
  */
-RTCUtils.prototype.obtainAudioAndVideoPermissions = function() {
+RTCUtils.prototype.obtainAudioAndVideoPermissions = function(devices) {
     var self = this;
     // Get AV
 
+    if(!devices)
+        devices = ['audio', 'video'];
+
     this.getUserMediaWithConstraints(
-        ['audio', 'video'],
+        devices,
         function (stream) {
             self.successCallback(stream);
         },
