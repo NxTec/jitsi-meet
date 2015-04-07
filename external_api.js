@@ -58,6 +58,8 @@ var JitsiMeetExternalAPI = (function()
         this.url = "//" + domain + "/jitsi-meet/index.html?node=";
         if(room_name)
             this.url += room_name;
+        if(audio_only)
+            this.url += 'audioOnly=true';
         this.url += "#external";
         JitsiMeetExternalAPI.id++;
 
