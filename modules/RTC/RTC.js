@@ -97,10 +97,6 @@ var RTC = {
     setVideoSrc: function (element, src) {
         this.rtcUtils.setVideoSrc(element, src);
     },
-    isAudioOnly: function () {
-        var search = location.search;
-        return search && search.toLowerCase().indexOf("audioonly") > -1;
-    },
     dispose: function() {
         if (this.rtcUtils) {
             this.rtcUtils = null;
@@ -137,8 +133,7 @@ var RTC = {
         APP.UI.addListener(UIEvents.PINNED_ENDPOINT,
             DataChannels.handlePinnedEndpointEvent);
         this.rtcUtils = new RTCUtils(this);
-        console.log('in rtc.start audioOnly: ', this.isAudioOnly());
-        this.rtcUtils.obtainAudioAndVideoPermissions(this.isAudioOnly() ? ['audio'] : ['audio', 'video']);
+        this.rtcUtils.obtainAudioAndVideoPermissions();
     },
     muteRemoteVideoStream: function (jid, value) {
         var stream;

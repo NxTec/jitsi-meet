@@ -25,7 +25,7 @@ var JitsiMeetExternalAPI = (function()
      * @param parent_node the node that will contain the iframe
      * @constructor
      */
-    function JitsiMeetExternalAPI(domain, room_name, width, height, parent_node, audio_only)
+    function JitsiMeetExternalAPI(domain, room_name, width, height, parent_node)
     {
         this.parentNode = null;
         if(parent_node)
@@ -46,20 +46,12 @@ var JitsiMeetExternalAPI = (function()
             width = MIN_WIDTH;
         if(height < MIN_HEIGHT)
             height = MIN_HEIGHT;
-
-        if(audio_only) {
-            width = 0;
-            height = 0;
-        }
-
         this.iframeHolder.style.width = width + "px";
         this.iframeHolder.style.height = height + "px";
         this.frameName = "jitsiConferenceFrame" + JitsiMeetExternalAPI.id;
         this.url = "//" + domain + "/jitsi-meet/index.html?node=";
         if(room_name)
             this.url += room_name;
-        if(audio_only)
-            this.url += 'audioOnly=true';
         this.url += "#external";
         JitsiMeetExternalAPI.id++;
 
