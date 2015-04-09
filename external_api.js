@@ -1,13 +1,12 @@
 /**
  * Implements API class that embeds Jitsi Meet in external applications.
  */
-var JitsiMeetExternalAPI = (function()
-{
+var JitsiMeetExternalAPI = (function () {
     /**
      * The minimum width for the Jitsi Meet frame
      * @type {number}
      */
-    var MIN_WIDTH = 790;
+    var MIN_WIDTH = 400;
 
     /**
      * The minimum height for the Jitsi Meet frame
@@ -25,15 +24,12 @@ var JitsiMeetExternalAPI = (function()
      * @param parent_node the node that will contain the iframe
      * @constructor
      */
-    function JitsiMeetExternalAPI(domain, room_name, width, height, parent_node)
-    {
+    function JitsiMeetExternalAPI(domain, room_name, width, height, parent_node) {
         this.parentNode = null;
-        if(parent_node)
-        {
+        if (parent_node) {
             this.parentNode = parent_node;
         }
-        else
-        {
+        else {
             var scriptTag = document.scripts[document.scripts.length - 1];
             this.parentNode = scriptTag.parentNode;
         }
@@ -42,15 +38,15 @@ var JitsiMeetExternalAPI = (function()
             this.parentNode.appendChild(document.createElement("div"));
         this.iframeHolder.id = "jitsiConference" + JitsiMeetExternalAPI.id;
 
-        if(width < MIN_WIDTH)
+        if (width < MIN_WIDTH)
             width = MIN_WIDTH;
-        if(height < MIN_HEIGHT)
+        if (height < MIN_HEIGHT)
             height = MIN_HEIGHT;
-        this.iframeHolder.style.width = width + "px";
-        this.iframeHolder.style.height = height + "px";
+        this.iframeHolder.style.width = "100%";// width + "px";
+        this.iframeHolder.style.height = "100%";//height + "px";
         this.frameName = "jitsiConferenceFrame" + JitsiMeetExternalAPI.id;
         this.url = "//" + domain + "/jitsi-meet/index.html?node=";
-        if(room_name)
+        if (room_name)
             this.url += room_name;
         this.url += "#external";
         JitsiMeetExternalAPI.id++;
@@ -61,7 +57,8 @@ var JitsiMeetExternalAPI = (function()
         this.frame.id = this.frameName;
         this.frame.width = "100%";
         this.frame.height = "100%";
-        this.frame.setAttribute("allowFullScreen","true");
+        this.frame.frameBorder = "0";
+        this.frame.setAttribute("allowFullScreen", "true");
         this.frame = this.iframeHolder.appendChild(this.frame);
 
 
@@ -81,15 +78,12 @@ var JitsiMeetExternalAPI = (function()
      * Sends the passed object to Jitsi Meet
      * @param object the object to be sent
      */
-    JitsiMeetExternalAPI.prototype.sendMessage = function(object)
-    {
-        if(this.frameLoaded)
-        {
+    JitsiMeetExternalAPI.prototype.sendMessage = function (object) {
+        if (this.frameLoaded) {
             this.frame.contentWindow.postMessage(
                 JSON.stringify(object), this.frame.src);
         }
-        else
-        {
+        else {
             this.initialCommands.push(object);
         }
 
@@ -107,13 +101,12 @@ var JitsiMeetExternalAPI = (function()
      * @param name the name of the command
      * @param arguments array of arguments
      */
-    JitsiMeetExternalAPI.prototype.executeCommand = function(name,
-                                                             argumentsList)
-    {
+    JitsiMeetExternalAPI.prototype.executeCommand = function (name,
+                                                             argumentsList) {
         var argumentsArray = argumentsList;
-        if(!argumentsArray)
+        if (!argumentsArray)
             argumentsArray = [];
-        var object = {type: "command", action: "execute"};
+        var object = { type: "command", action: "execute" };
         object[name] = argumentsArray;
         this.sendMessage(object);
     };
@@ -171,17 +164,15 @@ var JitsiMeetExternalAPI = (function()
      * @param object
      */
     JitsiMeetExternalAPI.prototype.addEventListeners
-        = function (object)
-    {
+        = function (object) {
 
-        var message = {type: "event", action: "add", events: []};
-        for(var i in object)
-        {
-            message.events.push(i);
-            this.eventHandlers[i] = object[i];
-        }
-        this.sendMessage(message);
-    };
+            var message = { type: "event", action: "add", events: [] };
+            for (var i in object) {
+                message.events.push(i);
+                this.eventHandlers[i] = object[i];
+            }
+            this.sendMessage(message);
+        };
 
     /**
      * Adds event listeners to Meet Jitsi. Currently we support the following
@@ -218,92 +209,81 @@ var JitsiMeetExternalAPI = (function()
      * @param listener the listener
      */
     JitsiMeetExternalAPI.prototype.addEventListener
-        = function (event, listener)
-    {
+        = function (event, listener) {
 
-        var message = {type: "event", action: "add", events: [event]};
-        this.eventHandlers[event] = listener;
-        this.sendMessage(message);
-    };
+            var message = { type: "event", action: "add", events: [event] };
+            this.eventHandlers[event] = listener;
+            this.sendMessage(message);
+        };
 
     /**
      * Removes event listener.
      * @param event the name of the event.
      */
     JitsiMeetExternalAPI.prototype.removeEventListener
-        = function (event)
-    {
-        if(!this.eventHandlers[event])
-        {
-            console.error("The event " + event + " is not registered.");
-            return;
-        }
-        var message = {type: "event", action: "remove", events: [event]};
-        delete this.eventHandlers[event];
-        this.sendMessage(message);
-    };
+        = function (event) {
+            if (!this.eventHandlers[event]) {
+                console.error("The event " + event + " is not registered.");
+                return;
+            }
+            var message = { type: "event", action: "remove", events: [event] };
+            delete this.eventHandlers[event];
+            this.sendMessage(message);
+        };
 
     /**
      * Removes event listeners.
      * @param events array with the names of the events.
      */
     JitsiMeetExternalAPI.prototype.removeEventListeners
-        = function (events)
-    {
-        var eventsArray = [];
-        for(var i = 0; i < events.length; i++)
-        {
-            var event = events[i];
-            if(!this.eventHandlers[event])
-            {
-                console.error("The event " + event + " is not registered.");
-                continue;
+        = function (events) {
+            var eventsArray = [];
+            for (var i = 0; i < events.length; i++) {
+                var event = events[i];
+                if (!this.eventHandlers[event]) {
+                    console.error("The event " + event + " is not registered.");
+                    continue;
+                }
+                delete this.eventHandlers[event];
+                eventsArray.push(event);
             }
-            delete this.eventHandlers[event];
-            eventsArray.push(event);
-        }
 
-        if(eventsArray.length > 0)
-        {
-            this.sendMessage(
-                {type: "event", action: "remove", events: eventsArray});
-        }
+            if (eventsArray.length > 0) {
+                this.sendMessage(
+                    { type: "event", action: "remove", events: eventsArray });
+            }
 
-    };
+        };
 
     /**
      * Processes message events sent from Jitsi Meet
      * @param event the event
      */
-    JitsiMeetExternalAPI.prototype.processMessage = function(event)
-    {
+    JitsiMeetExternalAPI.prototype.processMessage = function (event) {
         var message;
         try {
             message = JSON.parse(event.data);
-        } catch (e) {}
+        } catch (e) { }
 
-        if(!message.type) {
+        if (!message.type) {
             console.error("Message without type is received.");
             return;
         }
-        switch (message.type)
-        {
+        switch (message.type) {
             case "system":
-                if(message.loaded)
-                {
+                if (message.loaded) {
                     this.onFrameLoaded();
                 }
                 break;
             case "event":
-                if(message.action != "result" ||
-                    !message.event || !this.eventHandlers[message.event])
-                {
+                if (message.action != "result" ||
+                    !message.event || !this.eventHandlers[message.event]) {
                     console.warn("The received event cannot be parsed.");
                     return;
                 }
                 this.eventHandlers[message.event](message.result);
                 break;
-            default :
+            default:
                 console.error("Unknown message type.");
                 return;
         }
@@ -317,8 +297,7 @@ var JitsiMeetExternalAPI = (function()
      */
     JitsiMeetExternalAPI.prototype.onFrameLoaded = function () {
         this.frameLoaded = true;
-        for (var i = 0; i < this.initialCommands.length; i++)
-        {
+        for (var i = 0; i < this.initialCommands.length; i++) {
             this.sendMessage(this.initialCommands[i]);
         }
         this.initialCommands = null;
@@ -332,13 +311,11 @@ var JitsiMeetExternalAPI = (function()
         this.eventListener = function (event) {
             self.processMessage(event);
         };
-        if (window.addEventListener)
-        {
+        if (window.addEventListener) {
             window.addEventListener('message',
                 this.eventListener, false);
         }
-        else
-        {
+        else {
             window.attachEvent('onmessage', this.eventListener);
         }
     };
@@ -347,23 +324,21 @@ var JitsiMeetExternalAPI = (function()
      * Removes the listeners and removes the Jitsi Meet frame.
      */
     JitsiMeetExternalAPI.prototype.dispose = function () {
-        if (window.removeEventListener)
-        {
+        if (window.removeEventListener) {
             window.removeEventListener('message',
                 this.eventListener, false);
         }
-        else
-        {
+        else {
             window.detachEvent('onmessage',
                 this.eventListener);
         }
         var frame = document.getElementById(this.frameName);
-        if(frame)
+        if (frame)
             frame.src = 'about:blank';
         var self = this;
         window.setTimeout(function () {
-                self.iframeHolder.removeChild(self.frame);
-                self.iframeHolder.parentNode.removeChild(self.iframeHolder);
+            self.iframeHolder.removeChild(self.frame);
+            self.iframeHolder.parentNode.removeChild(self.iframeHolder);
         }, 10);
     };
 
