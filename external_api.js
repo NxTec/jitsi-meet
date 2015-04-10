@@ -24,7 +24,7 @@ var JitsiMeetExternalAPI = (function () {
      * @param parent_node the node that will contain the iframe
      * @constructor
      */
-    function JitsiMeetExternalAPI(domain, room_name, width, height, parent_node) {
+    function JitsiMeetExternalAPI(domain, room_name, width, height, parent_node, is_audio_only) {
         this.parentNode = null;
         if (parent_node) {
             this.parentNode = parent_node;
@@ -38,12 +38,14 @@ var JitsiMeetExternalAPI = (function () {
             this.parentNode.appendChild(document.createElement("div"));
         this.iframeHolder.id = "jitsiConference" + JitsiMeetExternalAPI.id;
 
-        if (width < MIN_WIDTH)
-            width = MIN_WIDTH;
-        if (height < MIN_HEIGHT)
-            height = MIN_HEIGHT;
-        this.iframeHolder.style.width = "100%";// width + "px";
-        this.iframeHolder.style.height = "100%";//height + "px";
+        if (!is_audio_only) {
+            if (width < MIN_WIDTH)
+                width = MIN_WIDTH;
+            if (height < MIN_HEIGHT)
+                height = MIN_HEIGHT;
+            this.iframeHolder.style.width = "100%";// width + "px";
+            this.iframeHolder.style.height = "100%";//height + "px";
+        }
         this.frameName = "jitsiConferenceFrame" + JitsiMeetExternalAPI.id;
         this.url = "//" + domain + "/jitsi-meet/index.html?node=";
         if (room_name)
@@ -55,10 +57,12 @@ var JitsiMeetExternalAPI = (function () {
         this.frame.src = this.url;
         this.frame.name = this.frameName;
         this.frame.id = this.frameName;
-        this.frame.width = "100%";
-        this.frame.height = "100%";
-        this.frame.frameBorder = "0";
-        this.frame.setAttribute("allowFullScreen", "true");
+        if (!is_audio_only) {
+            this.frame.width = "100%";
+            this.frame.height = "100%";
+            this.frame.frameBorder = "0";
+            this.frame.setAttribute("allowFullScreen", "true");
+        }
         this.frame = this.iframeHolder.appendChild(this.frame);
 
 
