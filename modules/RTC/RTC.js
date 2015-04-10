@@ -7,6 +7,7 @@ var DesktopSharingEventTypes
     = require("../../service/desktopsharing/DesktopSharingEventTypes");
 var MediaStreamType = require("../../service/RTC/MediaStreamTypes");
 var StreamEventTypes = require("../../service/RTC/StreamEventTypes.js");
+var RTCEvents = require("../../service/RTC/RTCEvents.js");
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
 var UIEvents = require("../../service/UI/UIEvents");
 
@@ -14,6 +15,10 @@ var eventEmitter = new EventEmitter();
 
 var RTC = {
     rtcUtils: null,
+    devices: {
+        audio: false,
+        video: false
+    },
     localStreams: [],
     remoteStreams: {},
     localAudio: null,
@@ -37,6 +42,7 @@ var RTC = {
         if(this.localStreams.length == 0 ||
             this.localStreams[0].getOriginalStream() != stream)
             this.localStreams.push(localStream);
+
         if(type == "audio")
         {
             this.localAudio = localStream;
@@ -145,7 +151,7 @@ var RTC = {
         }
 
         if(!stream)
-            return false;
+            return true;
 
         if (value != stream.muted) {
             stream.setMute(value);
@@ -166,10 +172,19 @@ var RTC = {
     changeLocalVideo: function (stream, isUsingScreenStream, callback) {
         var oldStream = this.localVideo.getOriginalStream();
         var type = (isUsingScreenStream? "screen" : "video");
-        this.localVideo = this.createLocalStream(stream, "video", true, type);
+        var localCallback = callback;
+        if(this.localVideo.isMuted() && this.localVideo.videoType !== type)
+        {
+            localCallback = function() {
+                APP.xmpp.setVideoMute(false, APP.UI.setVideoMuteButtonsState);
+                callback();
+            };
+        }
+        var videoStream = this.rtcUtils.createVideoStream(stream);
+        this.localVideo = this.createLocalStream(videoStream, "video", true, type);
         // Stop the stream to trigger onended event for old stream
         oldStream.stop();
-        APP.xmpp.switchStreams(stream, oldStream,callback);
+        APP.xmpp.switchStreams(videoStream, oldStream,localCallback);
     },
     /**
      * Checks if video identified by given src is desktop stream.
@@ -196,6 +211,34 @@ var RTC = {
             isDesktop = (stream.videoType === "screen");
 
         return isDesktop;
+    },
+    setVideoMute: function(mute, callback, options) {
+        if(!this.localVideo)
+            return;
+
+        if (mute == APP.RTC.localVideo.isMuted())
+        {
+            APP.xmpp.sendVideoInfoPresence(mute);
+            if(callback)
+                callback();
+        }
+        else
+        {
+            APP.RTC.localVideo.setMute(!mute);
+            APP.xmpp.setVideoMute(
+                mute,
+                callback,
+                options);
+        }
+    },
+    setDeviceAvailability: function (devices) {
+        if(!devices)
+            return;
+        if(devices.audio === true || devices.audio === false)
+            this.devices.audio = devices.audio;
+        if(devices.video === true || devices.video === false)
+            this.devices.video = devices.video;
+        eventEmitter.emit(RTCEvents.AVAILABLE_DEVICES_CHANGED, this.devices);
     }
 };
 

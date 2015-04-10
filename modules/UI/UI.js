@@ -105,7 +105,10 @@ function registerListeners() {
         function (endpointSimulcastLayers) {
             VideoLayout.onSimulcastLayersChanging(endpointSimulcastLayers);
         });
-
+    APP.RTC.addListener(RTCEvents.AVAILABLE_DEVICES_CHANGED,
+        function (devices) {
+            VideoLayout.setDeviceAvailabilityIcons(null, devices);
+        })
     APP.statistics.addAudioLevelListener(function(jid, audioLevel)
     {
         var resourceJid;
@@ -214,8 +217,12 @@ function registerListeners() {
     APP.xmpp.addListener(XMPPEvents.PASSWORD_REQUIRED, onPasswordReqiured);
     APP.xmpp.addListener(XMPPEvents.CHAT_ERROR_RECEIVED, chatAddError);
     APP.xmpp.addListener(XMPPEvents.ETHERPAD, initEtherpad);
-    APP.xmpp.addListener(XMPPEvents.AUTHENTICATION_REQUIRED, onAuthenticationRequired);
-
+    APP.xmpp.addListener(XMPPEvents.AUTHENTICATION_REQUIRED,
+        onAuthenticationRequired);
+    APP.xmpp.addListener(XMPPEvents.DEVICE_AVAILABLE,
+        function (resource, devices) {
+            VideoLayout.setDeviceAvailabilityIcons(resource, devices);
+        });
 
 }
 
@@ -230,21 +237,8 @@ function registerListeners() {
  * contrast to an automatic decision taken by the application logic)
  */
 function setVideoMute(mute, options) {
-    APP.xmpp.setVideoMute(
-        mute,
-        function (mute) {
-            var video = $('#video');
-            var communicativeClass = "icon-camera";
-            var muteClass = "icon-camera icon-camera-disabled";
-
-            if (mute) {
-                video.removeClass(communicativeClass);
-                video.addClass(muteClass);
-            } else {
-                video.removeClass(muteClass);
-                video.addClass(communicativeClass);
-            }
-        },
+    APP.RTC.setVideoMute(mute,
+        UI.setVideoMuteButtonsState,
         options);
 }
 
@@ -742,6 +736,20 @@ UI.showToolbar = function () {
 //Used by torture
 UI.dockToolbar = function (isDock) {
     return ToolbarToggler.dockToolbar(isDock);
+}
+
+UI.setVideoMuteButtonsState = function (mute) {
+    var video = $('#video');
+    var communicativeClass = "icon-camera";
+    var muteClass = "icon-camera icon-camera-disabled";
+
+    if (mute) {
+        video.removeClass(communicativeClass);
+        video.addClass(muteClass);
+    } else {
+        video.removeClass(muteClass);
+        video.addClass(communicativeClass);
+    }
 }
 
 module.exports = UI;

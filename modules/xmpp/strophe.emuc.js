@@ -143,6 +143,25 @@ module.exports = function(XMPP, eventEmitter) {
                 $(document).trigger('videomuted.muc', [from, videoMuted.text()]);
             }
 
+            var devices = $(pres).find('>devices');
+            if(devices.length)
+            {
+                var audio = devices.find('>audio');
+                var video = devices.find('>video');
+                var devicesValues = {audio: false, video: false};
+                if(audio.length && audio.text() === "true")
+                {
+                    devicesValues.audio = true;
+                }
+
+                if(video.length && video.text() === "true")
+                {
+                    devicesValues.video = true;
+                }
+                eventEmitter.emit(XMPPEvents.DEVICE_AVAILABLE,
+                    Strophe.getResourceFromJid(from), devicesValues);
+            }
+
             var stats = $(pres).find('>stats');
             if (stats.length) {
                 var statsObj = {};
@@ -200,7 +219,7 @@ module.exports = function(XMPP, eventEmitter) {
                     console.info("Ignore focus: " + from + ", real JID: " + member.jid);
                 }
                 else {
-                    var id = $(pres).find('>userID').text();
+                    var id = $(pres).find('>userId').text();
                     var email = $(pres).find('>email');
                     if (email.length > 0) {
                         id = email.text();
@@ -394,6 +413,10 @@ module.exports = function(XMPP, eventEmitter) {
                 });
         },
         sendPresence: function () {
+            if (!this.presMap['to']) {
+                // Too early to send presence - not initialized
+                return;
+            }
             var pres = $pres({to: this.presMap['to'] });
             pres.c('x', {xmlns: this.presMap['xns']});
 
@@ -430,6 +453,11 @@ module.exports = function(XMPP, eventEmitter) {
                     .t(this.presMap['displayName']).up();
             }
 
+            if(this.presMap["devices"])
+            {
+                pres.c('devices').c('audio').t(this.presMap['devices'].audio).up()
+                    .c('video').t(this.presMap['devices'].video).up().up();
+            }
             if (this.presMap['audions']) {
                 pres.c('audiomuted', {xmlns: this.presMap['audions']})
                     .t(this.presMap['audiomuted']).up();
@@ -492,6 +520,9 @@ module.exports = function(XMPP, eventEmitter) {
             this.presMap['source' + sourceNumber + '_type'] = mtype;
             this.presMap['source' + sourceNumber + '_ssrc'] = ssrcs;
             this.presMap['source' + sourceNumber + '_direction'] = direction;
+        },
+        addDevicesToPresence: function (devices) {
+            this.presMap['devices'] = devices;
         },
         clearPresenceMedia: function () {
             var self = this;

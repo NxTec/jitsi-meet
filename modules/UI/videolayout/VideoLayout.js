@@ -640,6 +640,48 @@ var VideoLayout = (function (my) {
     };
 
     /**
+     * Adds or removes icons for not available camera and microphone.
+     * @param resourceJid the jid of user
+     * @param devices available devices
+     */
+    my.setDeviceAvailabilityIcons = function (resourceJid, devices) {
+        if(!devices)
+            return;
+
+        var container = null
+        if(!resourceJid)
+        {
+            container = $("#localVideoContainer")[0];
+        }
+        else
+        {
+            container = $("#participant_" + resourceJid)[0];
+        }
+
+        if(!container)
+            return;
+
+        $("#" + container.id + " > .noMic").remove();
+        $("#" + container.id + " > .noVideo").remove();
+        if(!devices.audio)
+        {
+            container.appendChild(document.createElement("div")).setAttribute("class","noMic");
+        }
+
+        if(!devices.video)
+        {
+            container.appendChild(document.createElement("div")).setAttribute("class","noVideo");
+        }
+
+        if(!devices.audio && !devices.video)
+        {
+            $("#" + container.id + " > .noMic").css("background-position", "75%");
+            $("#" + container.id + " > .noVideo").css("background-position", "25%");
+            $("#" + container.id + " > .noVideo").css("background-color", "transparent");
+        }
+    }
+
+    /**
      * Checks if removed video is currently displayed and tries to display
      * another one instead.
      * @param removedVideoSrc src stream identifier of the video.
@@ -1137,7 +1179,7 @@ var VideoLayout = (function (my) {
                 console.log('stream ended', this);
 
                 VideoLayout.removeRemoteStreamElement(
-                    stream, isVideo, container);
+                    stream, isVideo, container, newElementId);
 
                 // NOTE(gp) it seems that under certain circumstances, the
                 // onended event is not fired and thus the contact list is not
@@ -1207,14 +1249,14 @@ var VideoLayout = (function (my) {
      * @param isVideo <tt>true</tt> if given <tt>stream</tt> is a video one.
      * @param container
      */
-    my.removeRemoteStreamElement = function (stream, isVideo, container) {
+    my.removeRemoteStreamElement = function (stream, isVideo, container, id) {
         if (!container)
             return;
 
         var select = null;
         var removedVideoSrc = null;
         if (isVideo) {
-            select = $('#' + container.id + '>video');
+            select = $('#' + id);
             removedVideoSrc = APP.RTC.getVideoSrc(select.get(0));
         }
         else

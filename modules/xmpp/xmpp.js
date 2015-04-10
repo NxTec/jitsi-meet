@@ -3,8 +3,10 @@ var Moderator = require("./moderator");
 var EventEmitter = require("events");
 var Recording = require("./recording");
 var SDP = require("./SDP");
+var Settings = require("../settings/Settings");
 var Pako = require("pako");
 var StreamEventTypes = require("../../service/RTC/StreamEventTypes");
+var RTCEvents = require("../../service/RTC/RTCEvents");
 var UIEvents = require("../../service/UI/UIEvents");
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
 
@@ -26,6 +28,18 @@ function connect(jid, password) {
         if (!connection.jingle.pc_constraints.optional)
             connection.jingle.pc_constraints.optional = [];
         connection.jingle.pc_constraints.optional.push({googIPv6: true});
+    }
+
+    // Include user info in MUC presence
+    var settings = Settings.getSettings();
+    if (settings.email) {
+        connection.emuc.addEmailToPresence(settings.email);
+    }
+    if (settings.uid) {
+        connection.emuc.addUserIdToPresence(settings.uid);
+    }
+    if (settings.displayName) {
+        connection.emuc.addDisplayNameToPresence(settings.displayName);
     }
 
     var anonymousConnectionFailed = false;
@@ -94,6 +108,9 @@ function initStrophePlugins()
 function registerListeners() {
     APP.RTC.addStreamListener(maybeDoJoin,
         StreamEventTypes.EVENT_TYPE_LOCAL_CREATED);
+    APP.RTC.addListener(RTCEvents.AVAILABLE_DEVICES_CHANGED, function (devices) {
+        XMPP.addToPresence("devices", devices);
+    })
     APP.UI.addListener(UIEvents.NICKNAME_CHANGED, function (nickname) {
         XMPP.addToPresence("displayName", nickname);
     });
@@ -210,10 +227,12 @@ var XMPP = {
             // FIXME: probably removing streams is not required and close() should
             // be enough
             if (APP.RTC.localAudio) {
-                handler.peerconnection.removeStream(APP.RTC.localAudio.getOriginalStream(), onUnload);
+                handler.peerconnection.removeStream(
+                    APP.RTC.localAudio.getOriginalStream(), onUnload);
             }
             if (APP.RTC.localVideo) {
-                handler.peerconnection.removeStream(APP.RTC.localVideo.getOriginalStream(), onUnload);
+                handler.peerconnection.removeStream(
+                    APP.RTC.localVideo.getOriginalStream(), onUnload);
             }
             handler.peerconnection.close();
         }
@@ -259,38 +278,28 @@ var XMPP = {
             callback();
         }
     },
+    sendVideoInfoPresence: function (mute) {
+        connection.emuc.addVideoInfoToPresence(mute);
+        connection.emuc.sendPresence();
+    },
     setVideoMute: function (mute, callback, options) {
-        if(!connection || !APP.RTC.localVideo)
+        if(!connection)
             return;
-
+        var self = this;
         var localCallback = function (mute) {
-            connection.emuc.addVideoInfoToPresence(mute);
-            connection.emuc.sendPresence();
+            self.sendVideoInfoPresence(mute);
             return callback(mute);
         };
 
-        if (mute == APP.RTC.localVideo.isMuted())
+        if(connection.jingle.activecall)
         {
-            // Even if no change occurs, the specified callback is to be executed.
-            // The specified callback may, optionally, return a successCallback
-            // which is to be executed as well.
-            var successCallback = localCallback(mute);
-
-            if (successCallback) {
-                successCallback();
-            }
-        } else {
-            APP.RTC.localVideo.setMute(!mute);
-            if(connection.jingle.activecall)
-            {
-                connection.jingle.activecall.setVideoMute(
-                    mute, localCallback, options);
-            }
-            else {
-                localCallback(mute);
-            }
-
+            connection.jingle.activecall.setVideoMute(
+                mute, localCallback, options);
         }
+        else {
+            localCallback(mute);
+        }
+
     },
     setAudioMute: function (mute, callback) {
         if (!(connection && APP.RTC.localAudio)) {
@@ -387,11 +396,15 @@ var XMPP = {
                 break;
             case "email":
                 connection.emuc.addEmailToPresence(value);
+                break;
+            case "devices":
+                connection.emuc.addDevicesToPresence(value);
+                break;
             default :
-                console.log("Unknown tag for presence.");
+                console.log("Unknown tag for presence: " + name);
                 return;
         }
-        if(!dontSend)
+        if (!dontSend)
             connection.emuc.sendPresence();
     },
     /**
@@ -490,8 +503,13 @@ var XMPP = {
     },
     getSessions: function () {
         return connection.jingle.sessions;
+    },
+    removeStream: function (stream) {
+        if(!connection || !connection.jingle.activecall ||
+            !connection.jingle.activecall.peerconnection)
+            return;
+        connection.jingle.activecall.peerconnection.removeStream(stream);
     }
-
 };
 
 module.exports = XMPP;
