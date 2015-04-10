@@ -1,4 +1,4 @@
-!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.APP=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.APP = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 /* jshint -W117 */
 /* application specific logic */
 
@@ -20,7 +20,7 @@ var APP =
 };
 
 function init() {
-
+    
     APP.RTC.start();
     APP.xmpp.start();
     APP.statistics.start();
@@ -39,7 +39,7 @@ $(document).ready(function () {
 
     APP.translation.init();
 
-    if(APP.API.isEnabled())
+    if(APP.API.isEnabled()) 
         APP.API.init();
 
     APP.UI.start(init);
@@ -79,8 +79,16 @@ var commands =
     muteVideo: APP.UI.toggleVideo,
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
-    toggleContactList: APP.UI.toggleContactList
+    toggleContactList: APP.UI.toggleContactList,
+    lockDown: lockDown
 };
+
+function lockDown(lockCode) {
+    console.log('API.lockDown lockCode:', lockCode);
+    console.log(APP);
+
+    APP.xmpp.setLockCode(lockCode);
+}
 
 
 /**
@@ -1802,11 +1810,12 @@ function onMucLeft(jid) {
 function onLocalRoleChange(jid, info, pres, isModerator)
 {
 
-    console.info("My role changed, new role: " + info.role);
+    console.info("My role changed, new role: " + info.role + " isModerator: " + isModerator);
     onModeratorStatusChanged(isModerator);
     VideoLayout.showModeratorIndicator();
 
     if (isModerator) {
+        APP.xmpp.lockRoom();
         Authentication.closeAuthenticationWindow();
         messageHandler.notify(null, "notify.me",
             'connected', "notify.moderator");
@@ -15935,11 +15944,19 @@ module.exports = function(XMPP, eventEmitter) {
         onPresenceError: function (pres) {
             var from = pres.getAttribute('from');
             if ($(pres).find('>error[type="auth"]>not-authorized[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
-                console.log('on password required', from);
+                console.log('on password required from:', from);
+
                 var self = this;
-                eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
-                    self.doJoin(from, value);
-                });
+                var lockCode = APP.xmpp.getLockCode();
+                if (lockCode.length > 0) {
+                    console.log('strophe.emuc.onPresenceError entering locked room with code:', lockCode);
+                    self.doJoin(from, lockCode);
+                }
+                else {
+                    eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
+                        self.doJoin(from, value);
+                    });
+                }
             } else if ($(pres).find(
                 '>error[type="cancel"]>not-allowed[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
                 var toDomain = Strophe.getDomainFromJid(pres.getAttribute('to'));
@@ -16876,6 +16893,7 @@ var XMPPEvents = require("../../service/xmpp/XMPPEvents");
 var eventEmitter = new EventEmitter();
 var connection = null;
 var authenticatedUser = false;
+var lockCode = '';
 
 function connect(jid, password) {
     connection = XMPP.createConnection();
@@ -16918,6 +16936,12 @@ function connect(jid, password) {
             if(password)
                 authenticatedUser = true;
             maybeDoJoin();
+
+            // handle locking of room
+            //if (lockCode !== '' && lockCode.length > 0 && Moderator.isModerator()) {
+            //    console.log('xmpp.connect ... locking room ... code: ', lockCode);
+            //    lockRoom(code, onSuccess, onError, onNotSupported);
+            //}
         } else if (status === Strophe.Status.CONNFAIL) {
             if(msg === 'x-strophe-bad-non-anon-jid') {
                 anonymousConnectionFailed = true;
@@ -16934,8 +16958,6 @@ function connect(jid, password) {
         }
     });
 }
-
-
 
 function maybeDoJoin() {
     if (connection && connection.connected &&
@@ -17030,6 +17052,9 @@ var XMPP = {
         }
         var jid = configDomain || window.location.hostname;
         connect(jid, null);
+    },
+    setLockcode: function (code) {
+        lockCode = code;
     },
     createConnection: function () {
         var bosh = config.bosh || '/http-bind';
@@ -17318,7 +17343,17 @@ var XMPP = {
         connection.emuc.setSubject(topic);
     },
     lockRoom: function (key, onSuccess, onError, onNotSupported) {
+        console.log('xmpp.lockRoom ... lockCode:', lockCode);
+        if (lockCode !== '' && lockCode.length > 0) key = lockCode;
         connection.emuc.lockRoom(key, onSuccess, onError, onNotSupported);
+    },
+    setLockCode: function (code) {
+        console.log('xmpp.setLockCode code:', code);
+        lockCode = code;
+    },
+    getLockCode: function () {
+        console.log('xmpp.getLockCode: ', lockCode);
+        return lockCode;
     },
     dial: function (to, from, roomName,roomPass) {
         connection.rayo.dial(to, from, roomName,roomPass);
@@ -25929,8 +25964,8 @@ Interop.prototype.toPlanB = function(desc) {
     // Try some heuristics to "make sure" this is a Plan A SDP. Plan B SDP has
     // a video, an audio and a data "channel" at most.
     if (session.media.length <= 3 && session.media.every(function(m) {
-        return ['video', 'audio', 'data'].indexOf(m.mid) !== -1;
-    })) {
+            return ['video', 'audio', 'data'].indexOf(m.mid) !== -1;
+        })) {
         console.warn('This description does not look like Plan A.');
         return desc;
     }
@@ -25975,8 +26010,6 @@ Interop.prototype.toPlanB = function(desc) {
         // Add sources to the channel and handle a=msid.
         if (typeof mLine.sources === 'object') {
             Object.keys(mLine.sources).forEach(function(ssrc) {
-                if (typeof channels[mLine.type].sources !== 'object')
-                    channels[mLine.type].sources = {    }
                 // Assign the sources to the channel.
                 channels[mLine.type].sources[ssrc] = mLine.sources[ssrc];
 
@@ -25991,11 +26024,11 @@ Interop.prototype.toPlanB = function(desc) {
 
         // Add ssrc groups to the channel.
         if (typeof mLine.ssrcGroups !== 'undefined' &&
-            Array.isArray(mLine.ssrcGroups)) {
+                Array.isArray(mLine.ssrcGroups)) {
 
             // Create the ssrcGroups array, if it's not defined.
             if (typeof channel.ssrcGroups === 'undefined' ||
-                !Array.isArray(channel.ssrcGroups)) {
+                    !Array.isArray(channel.ssrcGroups)) {
                 channel.ssrcGroups = [];
             }
 
@@ -26081,8 +26114,8 @@ Interop.prototype.toPlanA = function(desc) {
     // Try some heuristics to "make sure" this is a Plan B SDP. Plan B SDP has
     // a video, an audio and a data "channel" at most.
     if (session.media.length > 3 || !session.media.every(function(m) {
-        return ['video', 'audio', 'data'].indexOf(m.mid) !== -1;
-    })) {
+            return ['video', 'audio', 'data'].indexOf(m.mid) !== -1;
+        })) {
         console.warn('This description does not look like Plan B.');
         return desc;
     }
@@ -26222,65 +26255,65 @@ Interop.prototype.toPlanA = function(desc) {
                     mLine.sources[ssrc] = sources[ssrc];
                     delete sources[ssrc].msid;
                 } else {
-                    // Use the "channel" as a prototype for the "mLine".
-                    mLine = Object.create(channel);
-                    mLines[ssrc] = mLine;
+                // Use the "channel" as a prototype for the "mLine".
+                mLine = Object.create(channel);
+                mLines[ssrc] = mLine;
 
-                    // Assign the msid of the source to the m-line.
-                    mLine.msid = sources[ssrc].msid;
-                    delete sources[ssrc].msid;
+                // Assign the msid of the source to the m-line.
+                mLine.msid = sources[ssrc].msid;
+                delete sources[ssrc].msid;
 
-                    // We assign one SSRC per media line.
-                    mLine.sources = {};
-                    mLine.sources[ssrc] = sources[ssrc];
-                    mLine.ssrcGroups = invertedGroups[ssrc];
+                // We assign one SSRC per media line.
+                mLine.sources = {};
+                mLine.sources[ssrc] = sources[ssrc];
+                mLine.ssrcGroups = invertedGroups[ssrc];
 
-                    // Use the cached Plan A SDP (if it exists) to assign SSRCs to
-                    // mids.
-                    if (typeof cached !== 'undefined' &&
-                        typeof cached.media !== 'undefined' &&
-                        Array.isArray(cached.media)) {
+                // Use the cached Plan A SDP (if it exists) to assign SSRCs to
+                // mids.
+                if (typeof cached !== 'undefined' &&
+                    typeof cached.media !== 'undefined' &&
+                    Array.isArray(cached.media)) {
 
-                        cached.media.forEach(function(m) {
-                            if (typeof m.sources === 'object') {
-                                Object.keys(m.sources).forEach(function(s) {
-                                    if (s === ssrc) {
-                                        mLine.mid = m.mid;
-                                    }
-                                });
-                            }
-                        });
-                    }
-
-                    if (typeof mLine.mid === 'undefined') {
-
-                        // If this is an SSRC that we see for the first time assign
-                        // it a new mid. This is typically the case when this
-                        // method is called to transform a remote description for
-                        // the first time or when there is a new SSRC in the remote
-                        // description because a new peer has joined the
-                        // conference. Local SSRCs should have already been added
-                        // to the map in the toPlanB method.
-                        //
-                        // Because FF generates answers in Plan A style, we MUST
-                        // already have a cached answer with all the local SSRCs
-                        // mapped to some mLine/mid.
-
-                        if (desc.type === 'answer') {
-                            throw new Error("An unmapped SSRC was found.");
+                    cached.media.forEach(function(m) {
+                        if (typeof m.sources === 'object') {
+                            Object.keys(m.sources).forEach(function(s) {
+                                if (s === ssrc) {
+                                    mLine.mid = m.mid;
+                                }
+                            });
                         }
+                    });
+                }
 
-                        mLine.mid = [channel.type, '-', ssrc].join('');
+                if (typeof mLine.mid === 'undefined') {
+
+                    // If this is an SSRC that we see for the first time assign
+                    // it a new mid. This is typically the case when this
+                    // method is called to transform a remote description for
+                    // the first time or when there is a new SSRC in the remote
+                    // description because a new peer has joined the
+                    // conference. Local SSRCs should have already been added
+                    // to the map in the toPlanB method.
+                    //
+                    // Because FF generates answers in Plan A style, we MUST
+                    // already have a cached answer with all the local SSRCs
+                    // mapped to some mLine/mid.
+
+                    if (desc.type === 'answer') {
+                        throw new Error("An unmapped SSRC was found.");
                     }
 
-                    // Include the candidates in the 1st media line.
-                    mLine.candidates = candidates;
-                    mLine.iceUfrag = iceUfrag;
-                    mLine.icePwd = icePwd;
-                    mLine.fingerprint = fingerprint;
-                    mLine.port = port;
+                    mLine.mid = [channel.type, '-', ssrc].join('');
+                }
 
-                    media[mLine.mid] = mLine;
+                // Include the candidates in the 1st media line.
+                mLine.candidates = candidates;
+                mLine.iceUfrag = iceUfrag;
+                mLine.icePwd = icePwd;
+                mLine.fingerprint = fingerprint;
+                mLine.port = port;
+
+                media[mLine.mid] = mLine;
                 }
             });
         }
@@ -26300,7 +26333,7 @@ Interop.prototype.toPlanA = function(desc) {
 
         if (typeof cache['offer'] === 'undefined') {
             throw new Error("An answer is being processed but we couldn't " +
-                "find a cached offer.");
+                    "find a cached offer.");
         }
 
         var cachedOffer = transform.parse(cache['offer']);
@@ -26308,8 +26341,8 @@ Interop.prototype.toPlanA = function(desc) {
         if (typeof cachedOffer === 'undefined' ||
             typeof cachedOffer.media === 'undefined' ||
             !Array.isArray(cachedOffer.media)) {
-            // FIXME(gp) is this really a problem in the general case?
-            throw new Error("The cached offer has no media.");
+                // FIXME(gp) is this really a problem in the general case?
+                throw new Error("The cached offer has no media.");
         }
 
         cachedOffer.media.forEach(function(mo) {
@@ -26317,20 +26350,12 @@ Interop.prototype.toPlanA = function(desc) {
             var mLine;
             if (typeof media[mo.mid] === 'undefined') {
 
-                // This is either an m-line containing a remote track only or
-                // an m-line containing a remote track and a local track that
-                // has been removed.
+                // This is probably an m-line containing a remote track only.
                 // It MUST exist in the cached answer as a remote track only
                 // mLine.
 
                 cached.media.every(function(ma) {
                     if (mo.mid == ma.mid) {
-                        // in case this is a removed local track clean-up the
-                        // m-line and make sure it's 'recvonly'.
-                        delete ma.msid;
-                        delete ma.sources;
-                        delete ma.ssrcGroups;
-                        ma.direction = 'recvonly';
                         mLine = ma;
                         return false;
                     } else {
@@ -26343,8 +26368,8 @@ Interop.prototype.toPlanA = function(desc) {
 
             if (typeof mLine === 'undefined') {
                 throw new Error("The cached offer contains an m-line that " +
-                    "doesn't exist neither in the cached answer nor in " +
-                    "the converted answer.");
+                        "doesn't exist neither in the cached answer nor in " +
+                        "the converted answer.");
             }
 
             session.media.push(mLine);
