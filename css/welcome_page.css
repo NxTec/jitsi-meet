@@ -203,3 +203,8 @@
     text-align: center;
     display: none;
 }
+
+#welcome_page 
+{
+    display: none;
+}

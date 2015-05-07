@@ -29,7 +29,7 @@ var config = {
     useRtcpMux: true, // required for FF support
     useBundle: true, // required for FF support
     enableRecording: false,
-    enableWelcomePage: true,
+    enableWelcomePage: false,
     enableSimulcast: false, // blocks FF support
     logStats: false, // Enable logging of PeerConnection stats via the focus
     /*noticeMessage: 'Service update is scheduled for 16th March 2015. ' +
