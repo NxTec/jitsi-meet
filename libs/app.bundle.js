@@ -1,4 +1,4 @@
-(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.APP = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.APP=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 /* jshint -W117 */
 /* application specific logic */
 
@@ -16,11 +16,13 @@ var APP =
         this.keyboardshortcut = require("./modules/keyboardshortcut/keyboardshortcut");
         this.translation = require("./modules/translation/translation");
         this.settings = require("./modules/settings/Settings");
+        this.DTMF = require("./modules/DTMF/DTMF");
+        this.members = require("./modules/members/MemberList");
     }
 };
 
 function init() {
-    
+
     APP.RTC.start();
     APP.xmpp.start();
     APP.statistics.start();
@@ -30,16 +32,19 @@ function init() {
     APP.desktopsharing.init();
 
     APP.keyboardshortcut.init();
+    APP.members.start();
 }
 
 
 $(document).ready(function () {
 
+    var URLPRocessor = require("./modules/URLProcessor/URLProcessor");
+    URLPRocessor.setConfigParametersFromUrl();
     APP.init();
 
     APP.translation.init();
 
-    if(APP.API.isEnabled()) 
+    if(APP.API.isEnabled())
         APP.API.init();
 
     APP.UI.start(init);
@@ -54,7 +59,7 @@ $(window).bind('beforeunload', function () {
 module.exports = APP;
 
 
-},{"./modules/API/API":2,"./modules/RTC/RTC":6,"./modules/UI/UI":8,"./modules/connectionquality/connectionquality":35,"./modules/desktopsharing/desktopsharing":36,"./modules/keyboardshortcut/keyboardshortcut":37,"./modules/settings/Settings":38,"./modules/simulcast/simulcast":43,"./modules/statistics/statistics":46,"./modules/translation/translation":47,"./modules/xmpp/xmpp":61}],2:[function(require,module,exports){
+},{"./modules/API/API":2,"./modules/DTMF/DTMF":3,"./modules/RTC/RTC":7,"./modules/UI/UI":9,"./modules/URLProcessor/URLProcessor":36,"./modules/connectionquality/connectionquality":37,"./modules/desktopsharing/desktopsharing":38,"./modules/keyboardshortcut/keyboardshortcut":39,"./modules/members/MemberList":40,"./modules/settings/Settings":41,"./modules/simulcast/simulcast":46,"./modules/statistics/statistics":49,"./modules/translation/translation":50,"./modules/xmpp/xmpp":64}],2:[function(require,module,exports){
 /**
  * Implements API class that communicates with external api class
  * and provides interface to access Jitsi Meet features by external
@@ -79,16 +84,8 @@ var commands =
     muteVideo: APP.UI.toggleVideo,
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
-    toggleContactList: APP.UI.toggleContactList,
-    lockDown: lockDown
+    toggleContactList: APP.UI.toggleContactList
 };
-
-function lockDown(lockCode) {
-    console.log('API.lockDown lockCode:', lockCode);
-    console.log(APP);
-
-    APP.xmpp.setLockCode(lockCode);
-}
 
 
 /**
@@ -200,7 +197,7 @@ function processMessage(event)
 }
 
 function setupListeners() {
-    APP.xmpp.addListener(XMPPEvents.MUC_ENTER, function (from) {
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_JOINED, function (from) {
         API.triggerEvent("participantJoined", {jid: from});
     });
     APP.xmpp.addListener(XMPPEvents.MESSAGE_RECEIVED, function (from, nick, txt, myjid) {
@@ -208,7 +205,7 @@ function setupListeners() {
             API.triggerEvent("incomingMessage",
                 {"from": from, "nick": nick, "message": txt});
     });
-    APP.xmpp.addListener(XMPPEvents.MUC_LEFT, function (jid) {
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_LEFT, function (jid) {
         API.triggerEvent("participantLeft", {jid: jid});
     });
     APP.xmpp.addListener(XMPPEvents.DISPLAY_NAME_CHANGED, function (jid, newDisplayName) {
@@ -294,7 +291,56 @@ var API = {
 };
 
 module.exports = API;
-},{"../../service/xmpp/XMPPEvents":97}],3:[function(require,module,exports){
+},{"../../service/xmpp/XMPPEvents":105}],3:[function(require,module,exports){
+/* global APP */
+
+/**
+ * A module for sending DTMF tones.
+ */
+var DTMFSender;
+var initDtmfSender = function() {
+    // TODO: This needs to reset this if the peerconnection changes
+    // (e.g. the call is re-made)
+    if (DTMFSender)
+        return;
+
+    var localAudio = APP.RTC.localAudio;
+    if (localAudio && localAudio.getTracks().length > 0)
+    {
+        var peerconnection
+            = APP.xmpp.getConnection().jingle.activecall.peerconnection;
+        if (peerconnection) {
+            DTMFSender =
+                peerconnection.peerconnection
+                    .createDTMFSender(localAudio.getTracks()[0]);
+            console.log("Initialized DTMFSender");
+        }
+        else {
+            console.log("Failed to initialize DTMFSender: no PeerConnection.");
+        }
+    }
+    else {
+        console.log("Failed to initialize DTMFSender: no audio track.");
+    }
+};
+
+var DTMF = {
+    sendTones: function (tones, duration, pause) {
+        if (!DTMFSender)
+            initDtmfSender();
+
+        if (DTMFSender){
+            DTMFSender.insertDTMF(tones,
+                                  (duration || 200),
+                                  (pause || 200));
+        }
+    }
+};
+
+module.exports = DTMF;
+
+
+},{}],4:[function(require,module,exports){
 /* global Strophe, focusedVideoSrc*/
 
 // cache datachannels to avoid garbage collection
@@ -530,16 +576,19 @@ function onPinnedEndpointChanged(userResource)
 module.exports = DataChannels;
 
 
-},{"../../service/RTC/RTCEvents":89}],4:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96}],5:[function(require,module,exports){
 var StreamEventTypes = require("../../service/RTC/StreamEventTypes.js");
 
 
-function LocalStream(stream, type, eventEmitter, videoType)
+function LocalStream(stream, type, eventEmitter, videoType, isGUMStream)
 {
     this.stream = stream;
     this.eventEmitter = eventEmitter;
     this.type = type;
     this.videoType = videoType;
+    this.isGUMStream = true;
+    if(isGUMStream === false)
+        this.isGUMStream = isGUMStream;
     var self = this;
     if(type == "audio")
     {
@@ -570,26 +619,14 @@ LocalStream.prototype.getOriginalStream = function()
 }
 
 LocalStream.prototype.isAudioStream = function () {
-    return (this.stream.getAudioTracks() && this.stream.getAudioTracks().length > 0);
-};
-
-LocalStream.prototype.mute = function()
-{
-    var ismuted = false;
-    var tracks = this.getTracks();
-
-    for (var idx = 0; idx < tracks.length; idx++) {
-        ismuted = !tracks[idx].enabled;
-        tracks[idx].enabled = ismuted;
-    }
-    return ismuted;
+    return this.type === "audio";
 };
 
 LocalStream.prototype.setMute = function(mute)
 {
 
-    if(window.location.protocol != "https:" ||
-        this.isAudioStream() || this.videoType === "screen")
+    if((window.location.protocol != "https:" && this.isGUMStream) ||
+        (this.isAudioStream() && this.isGUMStream) || this.videoType === "screen")
     {
         var tracks = this.getTracks();
 
@@ -605,9 +642,18 @@ LocalStream.prototype.setMute = function(mute)
         }
         else
         {
-            APP.RTC.rtcUtils.obtainAudioAndVideoPermissions(["video"],
+            var self = this;
+            APP.RTC.rtcUtils.obtainAudioAndVideoPermissions(
+                (this.isAudioStream() ? ["audio"] : ["video"]),
                 function (stream) {
-                    APP.RTC.changeLocalVideo(stream, false, function () {});
+                    if(self.isAudioStream())
+                    {
+                        APP.RTC.changeLocalAudio(stream, function () {});
+                    }
+                    else
+                    {
+                        APP.RTC.changeLocalVideo(stream, false, function () {});
+                    }
                 });
         }
     }
@@ -638,7 +684,7 @@ LocalStream.prototype.getId = function () {
 
 module.exports = LocalStream;
 
-},{"../../service/RTC/StreamEventTypes.js":91}],5:[function(require,module,exports){
+},{"../../service/RTC/StreamEventTypes.js":98}],6:[function(require,module,exports){
 ////These lines should be uncommented when require works in app.js
 var MediaStreamType = require("../../service/RTC/MediaStreamTypes");
 var StreamEventType = require("../../service/RTC/StreamEventTypes");
@@ -700,7 +746,7 @@ MediaStream.prototype.setVideoType = function (value) {
 
 module.exports = MediaStream;
 
-},{"../../service/RTC/MediaStreamTypes":87,"../../service/RTC/StreamEventTypes":91}],6:[function(require,module,exports){
+},{"../../service/RTC/MediaStreamTypes":94,"../../service/RTC/StreamEventTypes":98}],7:[function(require,module,exports){
 var EventEmitter = require("events");
 var RTCUtils = require("./RTCUtils.js");
 var LocalStream = require("./LocalStream.js");
@@ -716,11 +762,39 @@ var UIEvents = require("../../service/UI/UIEvents");
 
 var eventEmitter = new EventEmitter();
 
+
+function getMediaStreamUsage()
+{
+    var result = {
+        audio: true,
+        video: true
+    };
+
+    /** There are some issues with the desktop sharing
+     * when this property is enabled.
+     * WARNING: We must change the implementation to start video/audio if we
+     * receive from the focus that the peer is not muted.
+
+     var isSecureConnection = window.location.protocol == "https:";
+
+    if(config.disableEarlyMediaPermissionRequests || !isSecureConnection)
+    {
+        result = {
+            audio: false,
+            video: false
+        };
+
+    }
+    **/
+
+    return result;
+}
+
 var RTC = {
     rtcUtils: null,
     devices: {
-        audio: false,
-        video: false
+        audio: true,
+        video: true
     },
     localStreams: [],
     remoteStreams: {},
@@ -738,13 +812,15 @@ var RTC = {
 
         eventEmitter.removeListener(eventType, listener);
     },
-    createLocalStream: function (stream, type, change, videoType) {
+    createLocalStream: function (stream, type, change, videoType, isMuted, isGUMStream) {
 
-        var localStream =  new LocalStream(stream, type, eventEmitter, videoType);
+        var localStream =  new LocalStream(stream, type, eventEmitter, videoType, isGUMStream);
         //in firefox we have only one stream object
         if(this.localStreams.length == 0 ||
             this.localStreams[0].getOriginalStream() != stream)
             this.localStreams.push(localStream);
+        if(isMuted === true)
+            localStream.setMute(false);
 
         if(type == "audio")
         {
@@ -758,7 +834,7 @@ var RTC = {
         if(change)
             eventType = StreamEventTypes.EVENT_TYPE_LOCAL_CHANGED;
 
-        eventEmitter.emit(eventType, localStream);
+        eventEmitter.emit(eventType, localStream, isMuted);
         return localStream;
     },
     removeLocalStream: function (stream) {
@@ -820,7 +896,7 @@ var RTC = {
             function (stream, isUsingScreenStream, callback) {
                 self.changeLocalVideo(stream, isUsingScreenStream, callback);
             }, DesktopSharingEventTypes.NEW_STREAM_CREATED);
-        APP.xmpp.addListener(XMPPEvents.CHANGED_STREAMS, function (jid, changedStreams) {
+        APP.xmpp.addListener(XMPPEvents.STREAMS_CHANGED, function (jid, changedStreams) {
             for(var i = 0; i < changedStreams.length; i++) {
                 var type = changedStreams[i].type;
                 if (type != "audio") {
@@ -842,7 +918,8 @@ var RTC = {
         APP.UI.addListener(UIEvents.PINNED_ENDPOINT,
             DataChannels.handlePinnedEndpointEvent);
         this.rtcUtils = new RTCUtils(this);
-        this.rtcUtils.obtainAudioAndVideoPermissions();
+        this.rtcUtils.obtainAudioAndVideoPermissions(
+            null, null, getMediaStreamUsage());
     },
     muteRemoteVideoStream: function (jid, value) {
         var stream;
@@ -883,11 +960,19 @@ var RTC = {
                 callback();
             };
         }
-        var videoStream = this.rtcUtils.createVideoStream(stream);
+        var videoStream = this.rtcUtils.createStream(stream, true);
         this.localVideo = this.createLocalStream(videoStream, "video", true, type);
         // Stop the stream to trigger onended event for old stream
         oldStream.stop();
         APP.xmpp.switchStreams(videoStream, oldStream,localCallback);
+    },
+    changeLocalAudio: function (stream, callback) {
+        var oldStream = this.localAudio.getOriginalStream();
+        var newStream = this.rtcUtils.createStream(stream);
+        this.localAudio = this.createLocalStream(newStream, "audio", true);
+        // Stop the stream to trigger onended event for old stream
+        oldStream.stop();
+        APP.xmpp.switchStreams(newStream, oldStream, callback, true);
     },
     /**
      * Checks if video identified by given src is desktop stream.
@@ -923,7 +1008,7 @@ var RTC = {
         {
             APP.xmpp.sendVideoInfoPresence(mute);
             if(callback)
-                callback();
+                callback(mute);
         }
         else
         {
@@ -947,7 +1032,7 @@ var RTC = {
 
 module.exports = RTC;
 
-},{"../../service/RTC/MediaStreamTypes":87,"../../service/RTC/RTCEvents.js":89,"../../service/RTC/StreamEventTypes.js":91,"../../service/UI/UIEvents":92,"../../service/desktopsharing/DesktopSharingEventTypes":95,"../../service/xmpp/XMPPEvents":97,"./DataChannels":3,"./LocalStream.js":4,"./MediaStream.js":5,"./RTCUtils.js":7,"events":98}],7:[function(require,module,exports){
+},{"../../service/RTC/MediaStreamTypes":94,"../../service/RTC/RTCEvents.js":96,"../../service/RTC/StreamEventTypes.js":98,"../../service/UI/UIEvents":99,"../../service/desktopsharing/DesktopSharingEventTypes":102,"../../service/xmpp/XMPPEvents":105,"./DataChannels":4,"./LocalStream.js":5,"./MediaStream.js":6,"./RTCUtils.js":8,"events":106}],8:[function(require,module,exports){
 var RTCBrowserType = require("../../service/RTC/RTCBrowserType.js");
 var Resolutions = require("../../service/RTC/Resolutions");
 
@@ -1094,6 +1179,8 @@ function RTCUtils(RTCService)
                 //
                 // https://groups.google.com/forum/#!topic/mozilla.dev.media/pKOiioXonJg
                 // https://github.com/webrtc/samples/issues/302
+                if(!element[0])
+                    return;
                 element[0].mozSrcObject = stream;
                 element[0].play();
             };
@@ -1106,10 +1193,13 @@ function RTCUtils(RTCService)
                 return tracks[0].id.replace(/[\{,\}]/g,"");
             };
             this.getVideoSrc = function (element) {
+                if(!element)
+                    return null;
                 return element.mozSrcObject;
             };
             this.setVideoSrc = function (element, src) {
-                element.mozSrcObject = src;
+                if(element)
+                    element.mozSrcObject = src;
             };
             RTCSessionDescription = mozRTCSessionDescription;
             RTCIceCandidate = mozRTCIceCandidate;
@@ -1132,10 +1222,13 @@ function RTCUtils(RTCService)
             return stream.id.replace(/[\{,\}]/g,"");
         };
         this.getVideoSrc = function (element) {
+            if(!element)
+                return null;
             return element.getAttribute("src");
         };
         this.setVideoSrc = function (element, src) {
-            element.setAttribute("src", src);
+            if(element)
+                element.setAttribute("src", src);
         };
         // DTLS should now be enabled by default but..
         this.pc_constraints = {'optional': [{'DtlsSrtpKeyAgreement': 'true'}]};
@@ -1242,32 +1335,97 @@ RTCUtils.prototype.setAvailableDevices = function (um, available) {
  * We ask for audio and video combined stream in order to get permissions and
  * not to ask twice.
  */
-RTCUtils.prototype.obtainAudioAndVideoPermissions = function(devices, callback) {
+RTCUtils.prototype.obtainAudioAndVideoPermissions =
+    function(devices, callback, usageOptions)
+{
     var self = this;
     // Get AV
+
+    var successCallback = function (stream) {
+        if(callback)
+            callback(stream, usageOptions);
+        else
+            self.successCallback(stream, usageOptions);
+    };
 
     if(!devices)
         devices = ['audio', 'video'];
 
-    this.getUserMediaWithConstraints(
-        devices,
+    var newDevices = [];
+
+
+    if(usageOptions)
+        for(var i = 0; i < devices.length; i++)
+        {
+            var device = devices[i];
+            if(usageOptions[device] === true)
+                newDevices.push(device);
+        }
+    else
+        newDevices = devices;
+
+    if(newDevices.length === 0)
+    {
+        successCallback();
+        return;
+    }
+
+    if (navigator.mozGetUserMedia) {
+
+        // With FF we can't split the stream into audio and video because FF
+        // doesn't support media stream constructors. So, we need to get the
+        // audio stream separately from the video stream using two distinct GUM
+        // calls. Not very user friendly :-( but we don't have many other
+        // options neither.
+        //
+        // Note that we pack those 2 streams in a single object and pass it to
+        // the successCallback method.
+
+        self.getUserMediaWithConstraints(
+            ['audio'],
+            function (audioStream) {
+                self.getUserMediaWithConstraints(
+                    ['video'],
+                    function (videoStream) {
+                        return self.successCallback({
+                            audioStream: audioStream,
+                            videoStream: videoStream
+                        });
+                    },
+                    function (error) {
+                        console.error('failed to obtain video stream - stop',
+                            error);
+                        return self.successCallback(null);
+                    },
+                    config.resolution || '360');
+            },
+            function (error) {
+                console.error('failed to obtain audio stream - stop',
+                        error);
+                return self.successCallback(null);
+            }
+        );
+    } else {
+        this.getUserMediaWithConstraints(
+        newDevices,
         function (stream) {
-            if(callback)
-                callback(stream);
-            else
-                self.successCallback(stream);
+            successCallback(stream);
         },
         function (error) {
             self.errorCallback(error);
         },
         config.resolution || '360');
+    }
+
 }
 
-RTCUtils.prototype.successCallback = function (stream) {
-    if(stream)
+RTCUtils.prototype.successCallback = function (stream, usageOptions) {
+    // If this is FF, the stream parameter is *not* a MediaStream object, it's
+    // an object with two properties: audioStream, videoStream.
+    if(stream && !navigator.mozGetUserMedia)
         console.log('got', stream, stream.getAudioTracks().length,
             stream.getVideoTracks().length);
-    this.handleLocalStream(stream);
+    this.handleLocalStream(stream, usageOptions);
 };
 
 RTCUtils.prototype.errorCallback = function (error) {
@@ -1305,12 +1463,15 @@ RTCUtils.prototype.errorCallback = function (error) {
 
 }
 
-RTCUtils.prototype.handleLocalStream = function(stream)
+RTCUtils.prototype.handleLocalStream = function(stream, usageOptions)
 {
+    // If this is FF, the stream parameter is *not* a MediaStream object, it's
+    // an object with two properties: audioStream, videoStream.
+    var audioStream, videoStream;
     if(window.webkitMediaStream)
     {
-        var audioStream = new webkitMediaStream();
-        var videoStream = new webkitMediaStream();
+        audioStream = new webkitMediaStream();
+        videoStream = new webkitMediaStream();
         if(stream) {
             var audioTracks = stream.getAudioTracks();
 
@@ -1324,43 +1485,52 @@ RTCUtils.prototype.handleLocalStream = function(stream)
                 videoStream.addTrack(videoTracks[i]);
             }
         }
-
-        this.service.createLocalStream(audioStream, "audio");
-
-        this.service.createLocalStream(videoStream, "video");
     }
     else
     {//firefox
-        this.service.createLocalStream(stream, "stream");
+        audioStream = stream.audioStream;
+        videoStream = stream.videoStream;
     }
 
+    var audioMuted = (usageOptions && usageOptions.audio === false),
+        videoMuted = (usageOptions && usageOptions.video === false);
+
+    var audioGUM = (!usageOptions || usageOptions.audio !== false),
+        videoGUM = (!usageOptions || usageOptions.video !== false);
+
+
+    this.service.createLocalStream(audioStream, "audio", null, null,
+        audioMuted, audioGUM);
+
+    this.service.createLocalStream(videoStream, "video", null, null,
+        videoMuted, videoGUM);
 };
 
-RTCUtils.prototype.createVideoStream = function(stream)
+RTCUtils.prototype.createStream = function(stream, isVideo)
 {
-    var videoStream = null;
+    var newStream = null;
     if(window.webkitMediaStream)
     {
-        videoStream = new webkitMediaStream();
-        if(stream)
+        newStream = new webkitMediaStream();
+        if(newStream)
         {
-            var videoTracks = stream.getVideoTracks();
+            var tracks = (isVideo? stream.getVideoTracks() : stream.getAudioTracks());
 
-            for (i = 0; i < videoTracks.length; i++) {
-                videoStream.addTrack(videoTracks[i]);
+            for (i = 0; i < tracks.length; i++) {
+                newStream.addTrack(tracks[i]);
             }
         }
 
     }
     else
-        videoStream = stream;
+        newStream = stream;
 
-    return videoStream;
+    return newStream;
 };
 
 module.exports = RTCUtils;
 
-},{"../../service/RTC/RTCBrowserType.js":88,"../../service/RTC/Resolutions":90}],8:[function(require,module,exports){
+},{"../../service/RTC/RTCBrowserType.js":95,"../../service/RTC/Resolutions":97}],9:[function(require,module,exports){
 var UI = {};
 
 var VideoLayout = require("./videolayout/VideoLayout.js");
@@ -1389,10 +1559,17 @@ var DesktopSharingEventTypes
 var RTCEvents = require("../../service/RTC/RTCEvents");
 var StreamEventTypes = require("../../service/RTC/StreamEventTypes");
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
+var MemberEvents = require("../../service/members/Events");
 
 var eventEmitter = new EventEmitter();
 var roomName = null;
 
+
+function notifyForInitialMute()
+{
+    messageHandler.notify(null, "notify.mutedTitle", "connected",
+        "notify.muted", null, {timeOut: 120000});
+}
 
 function setupPrezi()
 {
@@ -1416,24 +1593,42 @@ function setupToolbars() {
     BottomToolbar.init();
 }
 
-function streamHandler(stream) {
+function streamHandler(stream, isMuted) {
     switch (stream.type)
     {
         case "audio":
-            VideoLayout.changeLocalAudio(stream);
+            VideoLayout.changeLocalAudio(stream, isMuted);
             break;
         case "video":
-            VideoLayout.changeLocalVideo(stream);
+            VideoLayout.changeLocalVideo(stream, isMuted);
             break;
         case "stream":
-            VideoLayout.changeLocalStream(stream);
+            VideoLayout.changeLocalStream(stream, isMuted);
             break;
     }
 }
 
+function onXmppConnectionFailed(stropheErrorMsg) {
+
+    var title = APP.translation.generateTranslatonHTML(
+        "dialog.error");
+
+    var message;
+    if (stropheErrorMsg) {
+        message = APP.translation.generateTranslatonHTML(
+            "dialog.connectErrorWithMsg", {msg: stropheErrorMsg});
+    } else {
+        message = APP.translation.generateTranslatonHTML(
+            "dialog.connectError");
+    }
+
+    messageHandler.openDialog(
+        title, message, true, {}, function (e, v, m, f) { return false; });
+}
+
 function onDisposeConference(unload) {
     Toolbar.showAuthenticateButton(false);
-};
+}
 
 function onDisplayNameChanged(jid, displayName) {
     ContactList.onDisplayNameChange(jid, displayName);
@@ -1503,6 +1698,7 @@ function registerListeners() {
         VideoLayout.updateConnectionStats);
     APP.connectionquality.addListener(CQEvents.STOP,
         VideoLayout.onStatsStop);
+    APP.xmpp.addListener(XMPPEvents.CONNECTION_FAILED, onXmppConnectionFailed);
     APP.xmpp.addListener(XMPPEvents.DISPOSE_CONFERENCE, onDisposeConference);
     APP.xmpp.addListener(XMPPEvents.GRACEFUL_SHUTDOWN, function () {
         messageHandler.openMessageDialog(
@@ -1548,7 +1744,7 @@ function registerListeners() {
     APP.xmpp.addListener(XMPPEvents.USER_ID_CHANGED, function (from, id) {
         Avatar.setUserAvatar(from, id);
     });
-    APP.xmpp.addListener(XMPPEvents.CHANGED_STREAMS, function (jid, changedStreams) {
+    APP.xmpp.addListener(XMPPEvents.STREAMS_CHANGED, function (jid, changedStreams) {
         for(stream in changedStreams)
         {
             // might need to update the direction if participant just went from sendrecv to recvonly
@@ -1570,14 +1766,14 @@ function registerListeners() {
     });
     APP.xmpp.addListener(XMPPEvents.DISPLAY_NAME_CHANGED, onDisplayNameChanged);
     APP.xmpp.addListener(XMPPEvents.MUC_JOINED, onMucJoined);
-    APP.xmpp.addListener(XMPPEvents.LOCALROLE_CHANGED, onLocalRoleChange);
-    APP.xmpp.addListener(XMPPEvents.MUC_ENTER, onMucEntered);
+    APP.xmpp.addListener(XMPPEvents.LOCAL_ROLE_CHANGED, onLocalRoleChanged);
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_JOINED, onMucMemberJoined);
     APP.xmpp.addListener(XMPPEvents.MUC_ROLE_CHANGED, onMucRoleChanged);
     APP.xmpp.addListener(XMPPEvents.PRESENCE_STATUS, onMucPresenceStatus);
     APP.xmpp.addListener(XMPPEvents.SUBJECT_CHANGED, chatSetSubject);
     APP.xmpp.addListener(XMPPEvents.MESSAGE_RECEIVED, updateChatConversation);
-    APP.xmpp.addListener(XMPPEvents.MUC_LEFT, onMucLeft);
-    APP.xmpp.addListener(XMPPEvents.PASSWORD_REQUIRED, onPasswordReqiured);
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_LEFT, onMucMemberLeft);
+    APP.xmpp.addListener(XMPPEvents.PASSWORD_REQUIRED, onPasswordRequired);
     APP.xmpp.addListener(XMPPEvents.CHAT_ERROR_RECEIVED, chatAddError);
     APP.xmpp.addListener(XMPPEvents.ETHERPAD, initEtherpad);
     APP.xmpp.addListener(XMPPEvents.AUTHENTICATION_REQUIRED,
@@ -1587,6 +1783,11 @@ function registerListeners() {
             VideoLayout.setDeviceAvailabilityIcons(resource, devices);
         });
 
+    APP.members.addListener(MemberEvents.DTMF_SUPPORT_CHANGED,
+                            onDtmfSupportChanged);
+    APP.xmpp.addListener(XMPPEvents.START_MUTED, function (audio, video) {
+        SettingsMenu.setStartMuted(audio, video);
+    });
 }
 
 
@@ -1774,13 +1975,16 @@ function onMucJoined(jid, info) {
 
     if (displayName)
         onDisplayNameChanged('localVideoContainer', displayName);
+
+
+    VideoLayout.mucJoined();
 }
 
 function initEtherpad(name) {
     Etherpad.init(name);
 };
 
-function onMucLeft(jid) {
+function onMucMemberLeft(jid) {
     console.log('left.muc', jid);
     var displayName = $('#participant_' + Strophe.getResourceFromJid(jid) +
         '>.displayname').html();
@@ -1807,15 +2011,15 @@ function onMucLeft(jid) {
 };
 
 
-function onLocalRoleChange(jid, info, pres, isModerator)
+function onLocalRoleChanged(jid, info, pres, isModerator)
 {
 
-    console.info("My role changed, new role: " + info.role + " isModerator: " + isModerator);
+    console.info("My role changed, new role: " + info.role);
     onModeratorStatusChanged(isModerator);
     VideoLayout.showModeratorIndicator();
+    SettingsMenu.onRoleChanged();
 
     if (isModerator) {
-        APP.xmpp.lockRoom();
         Authentication.closeAuthenticationWindow();
         messageHandler.notify(null, "notify.me",
             'connected', "notify.moderator");
@@ -1837,7 +2041,7 @@ function onModeratorStatusChanged(isModerator) {
     }
 };
 
-function onPasswordReqiured(callback) {
+function onPasswordRequired(callback) {
     // password is required
     Toolbar.lockLockButton();
     var message = '<h2 data-i18n="dialog.passwordRequired">';
@@ -1866,7 +2070,17 @@ function onPasswordReqiured(callback) {
         ':input:first'
     );
 }
-function onMucEntered(jid, id, displayName) {
+
+/**
+ * The dialpad button is shown iff there is at least one member that supports
+ * DTMF (e.g. jigasi).
+ */
+function onDtmfSupportChanged(dtmfSupport) {
+    //TODO: enable when the UI is ready
+    //Toolbar.showDialPadButton(dtmfSupport);
+}
+
+function onMucMemberJoined(jid, id, displayName) {
     messageHandler.notify(displayName,'notify.somebody',
         'connected',
         'notify.connected');
@@ -2048,6 +2262,12 @@ UI.getRoomName = function () {
     return roomName;
 };
 
+UI.setInitialMuteFromFocus = function (muteAudio, muteVideo) {
+    if(muteAudio || muteVideo) notifyForInitialMute();
+    if(muteAudio) UI.setAudioMuted(true);
+    if(muteVideo) UI.setVideoMute(true);
+}
+
 /**
  * Mutes/unmutes the local video.
  */
@@ -2065,9 +2285,17 @@ UI.toggleAudio = function() {
 /**
  * Sets muted audio state for the local participant.
  */
-UI.setAudioMuted = function (mute) {
-
-    if(!APP.xmpp.setAudioMute(mute, function () {
+UI.setAudioMuted = function (mute, earlyMute) {
+    var audioMute = null;
+    if(earlyMute)
+        audioMute = function (mute, cb) {
+            return APP.xmpp.sendAudioInfoPresence(mute, cb);
+        };
+    else
+        audioMute = function (mute, cb) {
+            return APP.xmpp.setAudioMute(mute, cb);
+        }
+    if(!audioMute(mute, function () {
         VideoLayout.showLocalAudioIndicator(mute);
 
         UIUtil.buttonClick("#mute", "icon-microphone icon-mic-disabled");
@@ -2115,10 +2343,13 @@ UI.setVideoMuteButtonsState = function (mute) {
     }
 }
 
+
+UI.setVideoMute = setVideoMute;
+
 module.exports = UI;
 
 
-},{"../../service/RTC/RTCEvents":89,"../../service/RTC/StreamEventTypes":91,"../../service/connectionquality/CQEvents":94,"../../service/desktopsharing/DesktopSharingEventTypes":95,"../../service/xmpp/XMPPEvents":97,"./../settings/Settings":38,"./audio_levels/AudioLevels.js":9,"./authentication/Authentication":11,"./avatar/Avatar":13,"./etherpad/Etherpad.js":14,"./prezi/Prezi.js":15,"./side_pannels/SidePanelToggler":17,"./side_pannels/chat/Chat.js":18,"./side_pannels/contactlist/ContactList":22,"./side_pannels/settings/SettingsMenu":23,"./toolbars/BottomToolbar":24,"./toolbars/Toolbar":25,"./toolbars/ToolbarToggler":26,"./util/MessageHandler":28,"./util/NicknameHandler":29,"./util/UIUtil":30,"./videolayout/VideoLayout.js":32,"./welcome_page/RoomnameGenerator":33,"./welcome_page/WelcomePage":34,"events":98}],9:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96,"../../service/RTC/StreamEventTypes":98,"../../service/connectionquality/CQEvents":101,"../../service/desktopsharing/DesktopSharingEventTypes":102,"../../service/members/Events":103,"../../service/xmpp/XMPPEvents":105,"./../settings/Settings":41,"./audio_levels/AudioLevels.js":10,"./authentication/Authentication":12,"./avatar/Avatar":14,"./etherpad/Etherpad.js":15,"./prezi/Prezi.js":16,"./side_pannels/SidePanelToggler":18,"./side_pannels/chat/Chat.js":19,"./side_pannels/contactlist/ContactList":23,"./side_pannels/settings/SettingsMenu":24,"./toolbars/BottomToolbar":25,"./toolbars/Toolbar":26,"./toolbars/ToolbarToggler":27,"./util/MessageHandler":29,"./util/NicknameHandler":30,"./util/UIUtil":31,"./videolayout/VideoLayout.js":33,"./welcome_page/RoomnameGenerator":34,"./welcome_page/WelcomePage":35,"events":106}],10:[function(require,module,exports){
 var CanvasUtil = require("./CanvasUtils");
 
 var ASDrawContext = $('#activeSpeakerAudioLevel')[0].getContext('2d');
@@ -2384,7 +2615,7 @@ var AudioLevels = (function(my) {
 })(AudioLevels || {});
 
 module.exports = AudioLevels;
-},{"./CanvasUtils":10}],10:[function(require,module,exports){
+},{"./CanvasUtils":11}],11:[function(require,module,exports){
 /**
  * Utility class for drawing canvas shapes.
  */
@@ -2496,7 +2727,7 @@ var CanvasUtil = (function(my) {
 })(CanvasUtil || {});
 
 module.exports = CanvasUtil;
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 /* global $, APP*/
 
 var LoginDialog = require('./LoginDialog');
@@ -2621,7 +2852,7 @@ var Authentication = {
 };
 
 module.exports = Authentication;
-},{"../../xmpp/moderator":53,"./LoginDialog":12}],12:[function(require,module,exports){
+},{"../../xmpp/moderator":56,"./LoginDialog":13}],13:[function(require,module,exports){
 /* global $, APP, config*/
 
 var XMPP = require('../../xmpp/xmpp');
@@ -2850,7 +3081,7 @@ var LoginDialog = {
 };
 
 module.exports = LoginDialog;
-},{"../../xmpp/moderator":53,"../../xmpp/xmpp":61}],13:[function(require,module,exports){
+},{"../../xmpp/moderator":56,"../../xmpp/xmpp":64}],14:[function(require,module,exports){
 var Settings = require("../../settings/Settings");
 var MediaStreamType = require("../../../service/RTC/MediaStreamTypes");
 
@@ -2871,6 +3102,12 @@ function isUserMuted(jid) {
         if (!require("../videolayout/VideoLayout").isInLastN(resource)) {
             return true;
         }
+    }
+
+    if(jid && jid == APP.xmpp.myJid())
+    {
+        var localVideo = APP.RTC.localVideo;
+        return (!localVideo || localVideo.isMuted());
     }
 
     if (!APP.RTC.remoteStreams[jid] || !APP.RTC.remoteStreams[jid][MediaStreamType.VIDEO_TYPE]) {
@@ -2972,8 +3209,9 @@ var Avatar = {
             } else {
                 if (video && video.length > 0) {
                     setVisibility(video, !show);
-                    setVisibility(avatar, show);
                 }
+                setVisibility(avatar, show);
+
             }
         }
     },
@@ -3006,7 +3244,7 @@ var Avatar = {
 
 
 module.exports = Avatar;
-},{"../../../service/RTC/MediaStreamTypes":87,"../../settings/Settings":38,"../videolayout/VideoLayout":32}],14:[function(require,module,exports){
+},{"../../../service/RTC/MediaStreamTypes":94,"../../settings/Settings":41,"../videolayout/VideoLayout":33}],15:[function(require,module,exports){
 /* global $, config,
    setLargeVideoVisible, Util */
 
@@ -3202,7 +3440,7 @@ var Etherpad = {
 
 module.exports = Etherpad;
 
-},{"../prezi/Prezi":15,"../util/UIUtil":30,"../videolayout/VideoLayout":32}],15:[function(require,module,exports){
+},{"../prezi/Prezi":16,"../util/UIUtil":31,"../videolayout/VideoLayout":33}],16:[function(require,module,exports){
 var ToolbarToggler = require("../toolbars/ToolbarToggler");
 var UIUtil = require("../util/UIUtil");
 var VideoLayout = require("../videolayout/VideoLayout");
@@ -3578,7 +3816,7 @@ $(window).resize(function () {
 
 module.exports = Prezi;
 
-},{"../toolbars/ToolbarToggler":26,"../util/MessageHandler":28,"../util/UIUtil":30,"../videolayout/VideoLayout":32,"./PreziPlayer":16}],16:[function(require,module,exports){
+},{"../toolbars/ToolbarToggler":27,"../util/MessageHandler":29,"../util/UIUtil":31,"../videolayout/VideoLayout":33,"./PreziPlayer":17}],17:[function(require,module,exports){
 (function() {
     "use strict";
     var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
@@ -3874,7 +4112,7 @@ module.exports = Prezi;
 
 module.exports = PreziPlayer;
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 var Chat = require("./chat/Chat");
 var ContactList = require("./contactlist/ContactList");
 var Settings = require("./../../settings/Settings");
@@ -4131,7 +4369,7 @@ var PanelToggler = (function(my) {
 }(PanelToggler || {}));
 
 module.exports = PanelToggler;
-},{"../toolbars/ToolbarToggler":26,"../util/UIUtil":30,"../videolayout/VideoLayout":32,"./../../settings/Settings":38,"./chat/Chat":18,"./contactlist/ContactList":22,"./settings/SettingsMenu":23}],18:[function(require,module,exports){
+},{"../toolbars/ToolbarToggler":27,"../util/UIUtil":31,"../videolayout/VideoLayout":33,"./../../settings/Settings":41,"./chat/Chat":19,"./contactlist/ContactList":23,"./settings/SettingsMenu":24}],19:[function(require,module,exports){
 /* global $, Util, nickname:true */
 var Replacement = require("./Replacement");
 var CommandsProcessor = require("./Commands");
@@ -4489,7 +4727,7 @@ var Chat = (function (my) {
     return my;
 }(Chat || {}));
 module.exports = Chat;
-},{"../../../../service/UI/UIEvents":92,"../../toolbars/ToolbarToggler":26,"../../util/NicknameHandler":29,"../../util/UIUtil":30,"../SidePanelToggler":17,"./Commands":19,"./Replacement":20,"./smileys.json":21}],19:[function(require,module,exports){
+},{"../../../../service/UI/UIEvents":99,"../../toolbars/ToolbarToggler":27,"../../util/NicknameHandler":30,"../../util/UIUtil":31,"../SidePanelToggler":18,"./Commands":20,"./Replacement":21,"./smileys.json":22}],20:[function(require,module,exports){
 var UIUtil = require("../../util/UIUtil");
 
 /**
@@ -4587,7 +4825,7 @@ CommandsProcessor.prototype.processCommand = function()
 };
 
 module.exports = CommandsProcessor;
-},{"../../util/UIUtil":30}],20:[function(require,module,exports){
+},{"../../util/UIUtil":31}],21:[function(require,module,exports){
 var Smileys = require("./smileys.json");
 /**
  * Processes links and smileys in "body"
@@ -4651,7 +4889,7 @@ module.exports = {
     linkify: linkify
 };
 
-},{"./smileys.json":21}],21:[function(require,module,exports){
+},{"./smileys.json":22}],22:[function(require,module,exports){
 module.exports={
     "smileys": {
         "smiley1": ":)",
@@ -4701,7 +4939,7 @@ module.exports={
     }
 }
 
-},{}],22:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 
 var numberOfContacts = 0;
 var notificationInterval;
@@ -4891,7 +5129,7 @@ var ContactList = {
 };
 
 module.exports = ContactList;
-},{}],23:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 var Avatar = require("../../avatar/Avatar");
 var Settings = require("./../../../settings/Settings");
 var UIUtil = require("../../util/UIUtil");
@@ -4920,7 +5158,7 @@ function generateLanguagesSelectBox()
 var SettingsMenu = {
 
     init: function () {
-        $("#updateSettings").before(generateLanguagesSelectBox());
+        $("#startMutedOptions").before(generateLanguagesSelectBox());
         APP.translation.translateElement($("#languages_selectbox"));
         $('#settingsmenu>input').keyup(function(event){
             if(event.keyCode === 13) {//enter
@@ -4928,9 +5166,34 @@ var SettingsMenu = {
             }
         });
 
+        if(APP.xmpp.isModerator())
+        {
+            $("#startMutedOptions").css("display", "block");
+        }
+        else
+        {
+            $("#startMutedOptions").css("display", "none");
+        }
+
         $("#updateSettings").click(function () {
             SettingsMenu.update();
         });
+    },
+
+    onRoleChanged: function () {
+        if(APP.xmpp.isModerator())
+        {
+            $("#startMutedOptions").css("display", "block");
+        }
+        else
+        {
+            $("#startMutedOptions").css("display", "none");
+        }
+    },
+
+    setStartMuted: function (audio, video) {
+        $("#startAudioMuted").attr("checked", audio);
+        $("#startVideoMuted").attr("checked", video);
     },
 
     update: function() {
@@ -4949,6 +5212,10 @@ var SettingsMenu = {
         APP.xmpp.addToPresence("email", newEmail);
         var email = Settings.setEmail(newEmail);
 
+        var startAudioMuted = ($("#startAudioMuted").is(":checked"));
+        var startVideoMuted = ($("#startVideoMuted").is(":checked"));
+        APP.xmpp.addToPresence("startMuted",
+            [startAudioMuted, startVideoMuted]);
 
         Avatar.setUserAvatar(APP.xmpp.myJid(), email);
     },
@@ -4972,7 +5239,7 @@ var SettingsMenu = {
 
 
 module.exports = SettingsMenu;
-},{"../../../../service/translation/languages":96,"../../avatar/Avatar":13,"../../util/UIUtil":30,"./../../../settings/Settings":38}],24:[function(require,module,exports){
+},{"../../../../service/translation/languages":104,"../../avatar/Avatar":14,"../../util/UIUtil":31,"./../../../settings/Settings":41}],25:[function(require,module,exports){
 var PanelToggler = require("../side_pannels/SidePanelToggler");
 
 var buttonHandlers = {
@@ -5017,7 +5284,7 @@ var BottomToolbar = (function (my) {
 
 module.exports = BottomToolbar;
 
-},{"../side_pannels/SidePanelToggler":17}],25:[function(require,module,exports){
+},{"../side_pannels/SidePanelToggler":18}],26:[function(require,module,exports){
 /* global APP,$, buttonClick, config, lockRoom,
    setSharedKey, Util */
 var messageHandler = require("../util/MessageHandler");
@@ -5073,6 +5340,9 @@ var buttonHandlers =
     },
     "toolbar_button_sip": function () {
         return callSipButtonClicked();
+    },
+    "toolbar_button_dialpad": function () {
+        return dialpadButtonClicked();
     },
     "toolbar_button_settings": function () {
         PanelToggler.toggleSettingsMenu();
@@ -5241,6 +5511,11 @@ function inviteParticipants() {
     window.open("mailto:?subject=" + subject + "&body=" + body, '_blank');
 }
 
+function dialpadButtonClicked()
+{
+    //TODO show the dialpad window
+}
+
 function callSipButtonClicked()
 {
     var defaultNumber
@@ -5345,7 +5620,8 @@ var Toolbar = (function (my) {
         if (inviteLink) {
             inviteLink.value = roomUrl;
             inviteLink.select();
-            document.getElementById('jqi_state0_buttonInvite').disabled = false;
+            $('#inviteLinkRef').parent()
+                .find('button[value=true]').prop('disabled', false);
         }
     };
 
@@ -5438,12 +5714,13 @@ var Toolbar = (function (my) {
                     }
                 }
             },
-            function () {
+            function (event) {
                 if (roomUrl) {
                     document.getElementById('inviteLinkRef').select();
                 } else {
-                    document.getElementById('jqi_state0_buttonInvite')
-                        .disabled = true;
+                    if (event && event.target)
+                        $(event.target)
+                            .find('button[value=true]').prop('disabled', true);
                 }
             }
         );
@@ -5569,12 +5846,13 @@ var Toolbar = (function (my) {
 
     // Sets the state of the recording button
     my.setRecordingButtonState = function (isRecording) {
+        var selector = $('#recordButton');
         if (isRecording) {
-            $('#recordButton').removeClass("icon-recEnable");
-            $('#recordButton').addClass("icon-recEnable active");
+            selector.removeClass("icon-recEnable");
+            selector.addClass("icon-recEnable active");
         } else {
-            $('#recordButton').removeClass("icon-recEnable active");
-            $('#recordButton').addClass("icon-recEnable");
+            selector.removeClass("icon-recEnable active");
+            selector.addClass("icon-recEnable");
         }
     };
 
@@ -5587,14 +5865,24 @@ var Toolbar = (function (my) {
         }
     };
 
+    // Shows or hides the dialpad button
+    my.showDialPadButton = function (show) {
+        if (show) {
+            $('#dialPadButton').css({display: "inline-block"});
+        } else {
+            $('#dialPadButton').css({display: "none"});
+        }
+    };
+
     /**
      * Displays user authenticated identity name(login).
      * @param authIdentity identity name to be displayed.
      */
     my.setAuthenticatedIdentity = function (authIdentity) {
         if (authIdentity) {
-            $('#toolbar_auth_identity').css({display: "list-item"});
-            $('#toolbar_auth_identity').text(authIdentity);
+            var selector = $('#toolbar_auth_identity');
+            selector.css({display: "list-item"});
+            selector.text(authIdentity);
         } else {
             $('#toolbar_auth_identity').css({display: "none"});
         }
@@ -5645,7 +5933,7 @@ var Toolbar = (function (my) {
 }(Toolbar || {}));
 
 module.exports = Toolbar;
-},{"../../../service/authentication/AuthenticationEvents":93,"../authentication/Authentication":11,"../etherpad/Etherpad":14,"../prezi/Prezi":15,"../side_pannels/SidePanelToggler":17,"../util/MessageHandler":28,"../util/UIUtil":30,"./BottomToolbar":24}],26:[function(require,module,exports){
+},{"../../../service/authentication/AuthenticationEvents":100,"../authentication/Authentication":12,"../etherpad/Etherpad":15,"../prezi/Prezi":16,"../side_pannels/SidePanelToggler":18,"../util/MessageHandler":29,"../util/UIUtil":31,"./BottomToolbar":25}],27:[function(require,module,exports){
 /* global $, interfaceConfig, Moderator, DesktopStreaming.showDesktopSharingButton */
 
 var toolbarTimeoutObject,
@@ -5663,6 +5951,9 @@ function showDesktopSharingButton() {
  * Hides the toolbar.
  */
 function hideToolbar() {
+    if(config.alwaysVisibleToolbar)
+        return;
+
     var header = $("#header"),
         bottomToolbar = $("#bottomToolbar");
     var isToolbarHover = false;
@@ -5760,7 +6051,7 @@ var ToolbarToggler = {
 };
 
 module.exports = ToolbarToggler;
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 var JitsiPopover = (function () {
     /**
      * Constructs new JitsiPopover and attaches it to the element
@@ -5884,7 +6175,7 @@ var JitsiPopover = (function () {
 })();
 
 module.exports = JitsiPopover;
-},{}],28:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 /* global $, APP, jQuery, toastr */
 var messageHandler = (function(my) {
 
@@ -6062,7 +6353,7 @@ var messageHandler = (function(my) {
     };
 
     my.notify = function(displayName, displayNameKey,
-                         cls, messageKey, messageArguments) {
+                         cls, messageKey, messageArguments, options) {
         var displayNameSpan = '<span class="nickname" ';
         if(displayName)
         {
@@ -6082,7 +6373,7 @@ var messageHandler = (function(my) {
                     : "") + ">" +
             APP.translation.translateString(messageKey,
                 messageArguments) +
-            '</span>');
+            '</span>', null, options);
     };
 
     return my;
@@ -6092,7 +6383,7 @@ module.exports = messageHandler;
 
 
 
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 var UIEvents = require("../../../service/UI/UIEvents");
 
 var nickname = null;
@@ -6123,7 +6414,7 @@ var NickanameHandler = {
 };
 
 module.exports = NickanameHandler;
-},{"../../../service/UI/UIEvents":92}],30:[function(require,module,exports){
+},{"../../../service/UI/UIEvents":99}],31:[function(require,module,exports){
 /**
  * Created by hristo on 12/22/14.
  */
@@ -6205,7 +6496,7 @@ module.exports = {
 
 
 };
-},{"../side_pannels/SidePanelToggler":17}],31:[function(require,module,exports){
+},{"../side_pannels/SidePanelToggler":18}],32:[function(require,module,exports){
 var JitsiPopover = require("../util/JitsiPopover");
 
 /**
@@ -6633,7 +6924,7 @@ ConnectionIndicator.prototype.hideIndicator = function () {
 };
 
 module.exports = ConnectionIndicator;
-},{"../util/JitsiPopover":27}],32:[function(require,module,exports){
+},{"../util/JitsiPopover":28}],33:[function(require,module,exports){
 var AudioLevels = require("../audio_levels/AudioLevels");
 var Avatar = require("../avatar/Avatar");
 var Chat = require("../side_pannels/chat/Chat");
@@ -7186,24 +7477,58 @@ var VideoLayout = (function (my) {
             || (lastNEndpointsCache && lastNEndpointsCache.indexOf(resource) !== -1);
     };
 
-    my.changeLocalStream = function (stream) {
-        VideoLayout.changeLocalVideo(stream);
+    my.changeLocalStream = function (stream, isMuted) {
+        VideoLayout.changeLocalVideo(stream, isMuted);
     };
 
-    my.changeLocalAudio = function(stream) {
+    my.changeLocalAudio = function(stream, isMuted) {
+        if(isMuted)
+            APP.UI.setAudioMuted(true, true);
         APP.RTC.attachMediaStream($('#localAudio'), stream.getOriginalStream());
         document.getElementById('localAudio').autoplay = true;
         document.getElementById('localAudio').volume = 0;
-        if (preMuted) {
-            if(!APP.UI.setAudioMuted(true))
-            {
-                preMuted = mute;
-            }
-            preMuted = false;
-        }
     };
 
-    my.changeLocalVideo = function(stream) {
+    my.changeLocalVideo = function(stream, isMuted) {
+        // Set default display name.
+        setDisplayName('localVideoContainer');
+
+        if(!VideoLayout.connectionIndicators["localVideoContainer"]) {
+            VideoLayout.connectionIndicators["localVideoContainer"]
+                = new ConnectionIndicator($("#localVideoContainer")[0], null, VideoLayout);
+        }
+
+        AudioLevels.updateAudioLevelCanvas(null, VideoLayout);
+
+        var localVideo = null;
+
+        function localVideoClick(event) {
+            event.stopPropagation();
+            VideoLayout.handleVideoThumbClicked(
+                APP.RTC.getVideoSrc(localVideo),
+                false,
+                APP.xmpp.myResource());
+        }
+
+        $('#localVideoContainer').click(localVideoClick);
+
+        // Add hover handler
+        $('#localVideoContainer').hover(
+            function() {
+                VideoLayout.showDisplayName('localVideoContainer', true);
+            },
+            function() {
+                if (!VideoLayout.isLargeVideoVisible()
+                    || APP.RTC.getVideoSrc(localVideo) !== APP.RTC.getVideoSrc($('#largeVideo')[0]))
+                    VideoLayout.showDisplayName('localVideoContainer', false);
+            }
+        );
+
+        if(isMuted)
+        {
+            APP.UI.setVideoMute(true);
+            return;
+        }
         var flipX = true;
         if(stream.videoType == "screen")
             flipX = false;
@@ -7217,54 +7542,28 @@ var VideoLayout = (function (my) {
         var localVideoContainer = document.getElementById('localVideoWrapper');
         localVideoContainer.appendChild(localVideo);
 
-        // Set default display name.
-        setDisplayName('localVideoContainer');
-
-        if(!VideoLayout.connectionIndicators["localVideoContainer"]) {
-            VideoLayout.connectionIndicators["localVideoContainer"]
-                = new ConnectionIndicator($("#localVideoContainer")[0], null, VideoLayout);
-        }
-
-        AudioLevels.updateAudioLevelCanvas(null, VideoLayout);
-
         var localVideoSelector = $('#' + localVideo.id);
 
-        function localVideoClick(event) {
-            event.stopPropagation();
-            VideoLayout.handleVideoThumbClicked(
-                APP.RTC.getVideoSrc(localVideo),
-                false,
-                APP.xmpp.myResource());
-        }
         // Add click handler to both video and video wrapper elements in case
         // there's no video.
         localVideoSelector.click(localVideoClick);
-        $('#localVideoContainer').click(localVideoClick);
 
-        // Add hover handler
-        $('#localVideoContainer').hover(
-            function() {
-                VideoLayout.showDisplayName('localVideoContainer', true);
-            },
-            function() {
-                if (!VideoLayout.isLargeVideoVisible()
-                        || APP.RTC.getVideoSrc(localVideo) !== APP.RTC.getVideoSrc($('#largeVideo')[0]))
-                    VideoLayout.showDisplayName('localVideoContainer', false);
-            }
-        );
-        // Add stream ended handler
-        stream.getOriginalStream().onended = function () {
-            localVideoContainer.removeChild(localVideo);
-            VideoLayout.updateRemovedVideo(APP.RTC.getVideoSrc(localVideo));
-        };
         // Flip video x axis if needed
         flipXLocalVideo = flipX;
         if (flipX) {
             localVideoSelector.addClass("flipVideoX");
         }
+
         // Attach WebRTC stream
         var videoStream = APP.simulcast.getLocalVideoStream();
         APP.RTC.attachMediaStream(localVideoSelector, videoStream);
+
+        // Add stream ended handler
+        stream.getOriginalStream().onended = function () {
+            localVideoContainer.removeChild(localVideo);
+            VideoLayout.updateRemovedVideo(APP.RTC.getVideoSrc(localVideo));
+        };
+
 
         localVideoSrc = APP.RTC.getVideoSrc(localVideo);
 
@@ -7273,6 +7572,14 @@ var VideoLayout = (function (my) {
         VideoLayout.updateLargeVideo(localVideoSrc, 0,
             myResourceJid);
 
+    };
+
+    my.mucJoined = function () {
+        var myResourceJid = APP.xmpp.myResource();
+
+        if(!largeVideoState.userResourceJid)
+            VideoLayout.updateLargeVideo(localVideoSrc, 0,
+                myResourceJid, true);
     };
 
     /**
@@ -7342,26 +7649,34 @@ var VideoLayout = (function (my) {
                 }
             }
 
+            var src = null, volume = null;
             // mute if localvideo
             if (pick) {
                 var container = pick.parentNode;
-                var jid = null;
-                if(container)
-                {
-                    if(container.id == "localVideoWrapper")
-                    {
-                        jid = APP.xmpp.myResource();
-                    }
-                    else
-                    {
-                        jid = VideoLayout.getPeerContainerResourceJid(container);
-                    }
-                }
-
-                VideoLayout.updateLargeVideo(APP.RTC.getVideoSrc(pick), pick.volume, jid);
+                src = APP.RTC.getVideoSrc(pick);
+                volume = pick.volume;
             } else {
                 console.warn("Failed to elect large video");
+                container = $('#remoteVideos>span[id!="mixedstream"]:visible:last').get(0);
+
             }
+
+            var jid = null;
+            if(container)
+            {
+                if(container.id == "localVideoWrapper")
+                {
+                    jid = APP.xmpp.myResource();
+                }
+                else
+                {
+                    jid = VideoLayout.getPeerContainerResourceJid(container);
+                }
+            }
+            else
+                return;
+
+            VideoLayout.updateLargeVideo(src, volume, jid);
         }
     };
     
@@ -7391,7 +7706,9 @@ var VideoLayout = (function (my) {
             container.id = 'mixedstream';
             container.className = 'videocontainer';
             remotes.appendChild(container);
-            UIUtil.playSoundNotification('userJoined');
+            if(!config.startAudioMuted ||
+                config.startAudioMuted > APP.members.size())
+                UIUtil.playSoundNotification('userJoined');
         }
 
         if (container) {
@@ -7410,11 +7727,10 @@ var VideoLayout = (function (my) {
     /**
      * Updates the large video with the given new video source.
      */
-    my.updateLargeVideo = function(newSrc, vol, resourceJid) {
-        console.log('hover in', newSrc);
+    my.updateLargeVideo = function(newSrc, vol, resourceJid, forceUpdate) {
+        console.log('hover in', newSrc, resourceJid);
 
-        if (APP.RTC.getVideoSrc($('#largeVideo')[0]) !== newSrc) {
-
+        if (APP.RTC.getVideoSrc($('#largeVideo')[0]) !== newSrc || forceUpdate) {
             $('#activeSpeaker').css('visibility', 'hidden');
             // Due to the simulcast the localVideoSrc may have changed when the
             // fadeOut event triggers. In that case the getJidFromVideoSrc and
@@ -7452,7 +7768,6 @@ var VideoLayout = (function (my) {
                 largeVideoState.updateInProgress = true;
 
                 var doUpdate = function () {
-
                     Avatar.updateActiveSpeakerAvatarSrc(
                         APP.xmpp.findJidFromResource(
                             largeVideoState.userResourceJid));
@@ -7914,7 +8229,9 @@ var VideoLayout = (function (my) {
             // Remove whole container
             container.remove();
 
-            UIUtil.playSoundNotification('userLeft');
+            if(!config.startAudioMuted ||
+                config.startAudioMuted > APP.members.size())
+                UIUtil.playSoundNotification('userLeft');
             VideoLayout.resizeThumbnails();
         }
 
@@ -8297,10 +8614,9 @@ var VideoLayout = (function (my) {
                 if (videoSpan.classList.contains("dominantspeaker"))
                     videoSpan.classList.remove("dominantspeaker");
             }
-
-            Avatar.showUserAvatar(
-                APP.xmpp.findJidFromResource(resourceJid));
         }
+        Avatar.showUserAvatar(
+            APP.xmpp.findJidFromResource(resourceJid));
     };
 
     /**
@@ -8931,7 +9247,7 @@ var VideoLayout = (function (my) {
 }(VideoLayout || {}));
 
 module.exports = VideoLayout;
-},{"../../../service/RTC/MediaStreamTypes":87,"../../../service/UI/UIEvents":92,"../audio_levels/AudioLevels":9,"../avatar/Avatar":13,"../etherpad/Etherpad":14,"../prezi/Prezi":15,"../side_pannels/chat/Chat":18,"../side_pannels/contactlist/ContactList":22,"../util/NicknameHandler":29,"../util/UIUtil":30,"./ConnectionIndicator":31}],33:[function(require,module,exports){
+},{"../../../service/RTC/MediaStreamTypes":94,"../../../service/UI/UIEvents":99,"../audio_levels/AudioLevels":10,"../avatar/Avatar":14,"../etherpad/Etherpad":15,"../prezi/Prezi":16,"../side_pannels/chat/Chat":19,"../side_pannels/contactlist/ContactList":23,"../util/NicknameHandler":30,"../util/UIUtil":31,"./ConnectionIndicator":32}],34:[function(require,module,exports){
 //var nouns = [
 //];
 var pluralNouns = [
@@ -9112,7 +9428,7 @@ var RoomNameGenerator = {
 
 module.exports = RoomNameGenerator;
 
-},{}],34:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 var animateTimeout, updateTimeout;
 
 var RoomNameGenerator = require("./RoomnameGenerator");
@@ -9214,7 +9530,48 @@ function setupWelcomePage()
 }
 
 module.exports = setupWelcomePage;
-},{"./RoomnameGenerator":33}],35:[function(require,module,exports){
+},{"./RoomnameGenerator":34}],36:[function(require,module,exports){
+var params = {};
+function getConfigParamsFromUrl() {
+    if(!location.hash)
+        return {};
+    var hash = location.hash.substr(1);
+    var result = {};
+    hash.split("&").forEach(function(part) {
+        var item = part.split("=");
+        result[item[0]] = JSON.parse(
+            decodeURIComponent(item[1]).replace(/\\&/, "&"));
+    });
+    return result;
+}
+
+params = getConfigParamsFromUrl();
+
+var URLProcessor = {
+    setConfigParametersFromUrl: function () {
+        for(var k in params)
+        {
+            if(typeof k !== "string" || k.indexOf("config.") === -1)
+                continue;
+
+            var v = params[k];
+            var confKey = k.substr(7);
+            if(config[confKey] && typeof config[confKey] !== typeof v)
+            {
+                console.warn("The type of " + k +
+                    " is wrong. That parameter won't be updated in config.js.");
+                continue;
+            }
+
+            config[confKey] = v;
+
+        }
+
+    }
+};
+
+module.exports = URLProcessor;
+},{}],37:[function(require,module,exports){
 var EventEmitter = require("events");
 var eventEmitter = new EventEmitter();
 var CQEvents = require("../../service/connectionquality/CQEvents");
@@ -9349,7 +9706,7 @@ var ConnectionQuality = {
 };
 
 module.exports = ConnectionQuality;
-},{"../../service/connectionquality/CQEvents":94,"../../service/xmpp/XMPPEvents":97,"events":98}],36:[function(require,module,exports){
+},{"../../service/connectionquality/CQEvents":101,"../../service/xmpp/XMPPEvents":105,"events":106}],38:[function(require,module,exports){
 /* global $, alert, APP, changeLocalVideo, chrome, config, getConferenceHandler,
  getUserMediaWithConstraints */
 /**
@@ -9717,7 +10074,7 @@ module.exports = {
 };
 
 
-},{"../../service/desktopsharing/DesktopSharingEventTypes":95,"events":98}],37:[function(require,module,exports){
+},{"../../service/desktopsharing/DesktopSharingEventTypes":102,"events":106}],39:[function(require,module,exports){
 //maps keycode to character, id of popover for given function and function
 var shortcuts = {
     67: {
@@ -9810,7 +10167,138 @@ var KeyboardShortcut = {
 
 module.exports = KeyboardShortcut;
 
-},{}],38:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
+/* global APP */
+
+/**
+ * This module is meant to (eventually) contain and manage all information
+ * about members/participants of the conference, so that other modules don't
+ * have to do it on their own, and so that other modules can access members'
+ * information from a single place.
+ *
+ * Currently this module only manages information about the support of jingle
+ * DTMF of the members. Other fields, as well as accessor methods are meant to
+ * be added as needed.
+ */
+
+var XMPPEvents = require("../../service/xmpp/XMPPEvents");
+var Events = require("../../service/members/Events");
+var EventEmitter = require("events");
+
+var eventEmitter = new EventEmitter();
+
+/**
+ * The actual container.
+ */
+var members = {};
+
+/**
+ * There is at least one member that supports DTMF (i.e. is jigasi).
+ */
+var atLeastOneDtmf = false;
+
+
+function registerListeners() {
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_JOINED, onMucMemberJoined);
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_LEFT, onMucMemberLeft);
+}
+
+/**
+ * Handles a new member joining the MUC.
+ */
+function onMucMemberJoined(jid, id, displayName) {
+    var member = {
+        displayName: displayName
+    };
+
+    APP.xmpp.getConnection().disco.info(
+        jid, "" /* node */, function(iq) { onDiscoInfoReceived(jid, iq); });
+
+    members[jid] = member;
+}
+
+/**
+ * Handles a member leaving the MUC.
+ */
+function onMucMemberLeft(jid) {
+    delete members[jid];
+    updateAtLeastOneDtmf();
+}
+
+/**
+ * Handles the reception of a disco#info packet from a particular JID.
+ * @param jid the JID sending the packet.
+ * @param iq the packet.
+ */
+function onDiscoInfoReceived(jid, iq) {
+    if (!members[jid])
+        return;
+
+    var supportsDtmf
+        = $(iq).find('>query>feature[var="urn:xmpp:jingle:dtmf:0"]').length > 0;
+    updateDtmf(jid, supportsDtmf);
+}
+
+/**
+ * Updates the 'supportsDtmf' field for a member.
+ * @param jid the jid of the member.
+ * @param newValue the new value for the 'supportsDtmf' field.
+ */
+function updateDtmf(jid, newValue) {
+    var oldValue = members[jid].supportsDtmf;
+    members[jid].supportsDtmf = newValue;
+
+    if (newValue != oldValue) {
+        updateAtLeastOneDtmf();
+    }
+}
+
+/**
+ * Checks each member's 'supportsDtmf' field and updates
+ * 'atLastOneSupportsDtmf'.
+ */
+function updateAtLeastOneDtmf(){
+    var newAtLeastOneDtmf = false;
+    for (var key in members) {
+        if (typeof members[key].supportsDtmf !== 'undefined'
+            && members[key].supportsDtmf) {
+            newAtLeastOneDtmf= true;
+            break;
+        }
+    }
+
+    if (atLeastOneDtmf != newAtLeastOneDtmf) {
+        atLeastOneDtmf = newAtLeastOneDtmf;
+        eventEmitter.emit(Events.DTMF_SUPPORT_CHANGED, atLeastOneDtmf);
+    }
+}
+
+
+/**
+ * Exported interface.
+ */
+var Members = {
+    start: function(){
+        registerListeners();
+    },
+    addListener: function(type, listener)
+    {
+        eventEmitter.on(type, listener);
+    },
+    removeListener: function (type, listener) {
+        eventEmitter.removeListener(type, listener);
+    },
+    size: function () {
+        return Object.keys(members).length;
+    },
+    getMembers: function () {
+        return members;
+    }
+};
+
+module.exports = Members;
+
+},{"../../service/members/Events":103,"../../service/xmpp/XMPPEvents":105,"events":106}],41:[function(require,module,exports){
 var email = '';
 var displayName = '';
 var userId;
@@ -9877,7 +10365,7 @@ var Settings =
 
 module.exports = Settings;
 
-},{}],39:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 /**
  *
  * @constructor
@@ -9910,7 +10398,7 @@ SimulcastLogger.prototype.error = function (text) {
 };
 
 module.exports = SimulcastLogger;
-},{}],40:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 var SimulcastLogger = require("./SimulcastLogger");
 var SimulcastUtils = require("./SimulcastUtils");
 var MediaStreamType = require("../../service/RTC/MediaStreamTypes");
@@ -10179,7 +10667,7 @@ SimulcastReceiver.prototype.transformRemoteDescription = function (desc) {
 };
 
 module.exports = SimulcastReceiver;
-},{"../../service/RTC/MediaStreamTypes":87,"./SimulcastLogger":39,"./SimulcastUtils":42}],41:[function(require,module,exports){
+},{"../../service/RTC/MediaStreamTypes":94,"./SimulcastLogger":42,"./SimulcastUtils":45}],44:[function(require,module,exports){
 var SimulcastLogger = require("./SimulcastLogger");
 var SimulcastUtils = require("./SimulcastUtils");
 
@@ -10702,7 +11190,7 @@ module.exports = {
     "no": NoSimulcastSender
 }
 
-},{"./SimulcastLogger":39,"./SimulcastUtils":42}],42:[function(require,module,exports){
+},{"./SimulcastLogger":42,"./SimulcastUtils":45}],45:[function(require,module,exports){
 var SimulcastLogger = require("./SimulcastLogger");
 
 /**
@@ -10936,7 +11424,7 @@ SimulcastUtils.prototype._compileVideoSources = function (videoSources) {
 };
 
 module.exports = SimulcastUtils;
-},{"./SimulcastLogger":39}],43:[function(require,module,exports){
+},{"./SimulcastLogger":42}],46:[function(require,module,exports){
 /*jslint plusplus: true */
 /*jslint nomen: true*/
 
@@ -11139,7 +11627,7 @@ SimulcastManager.prototype.resetSender = function() {
 var simulcast = new SimulcastManager();
 
 module.exports = simulcast;
-},{"../../service/RTC/RTCEvents":89,"./SimulcastReceiver":40,"./SimulcastSender":41,"./SimulcastUtils":42}],44:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96,"./SimulcastReceiver":43,"./SimulcastSender":44,"./SimulcastUtils":45}],47:[function(require,module,exports){
 /**
  * Provides statistics for the local stream.
  */
@@ -11270,7 +11758,7 @@ LocalStatsCollector.prototype.stop = function () {
 };
 
 module.exports = LocalStatsCollector;
-},{}],45:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 /* global ssrc2jid */
 /* jshint -W117 */
 var RTCBrowserType = require("../../service/RTC/RTCBrowserType");
@@ -11533,7 +12021,7 @@ StatsCollector.prototype.start = function ()
         );
     }
 
-    if(!config.disableStats) {
+    if(!config.disableStats && !navigator.mozGetUserMedia) {
         this.statsIntervalId = setInterval(
             function () {
                 // Interval updates
@@ -11567,7 +12055,7 @@ StatsCollector.prototype.start = function ()
         );
     }
 
-    if (config.logStats) {
+    if (config.logStats && !navigator.mozGetUserMedia) {
         this.gatherStatsIntervalId = setInterval(
             function () {
                 self.peerconnection.getStats(
@@ -12011,7 +12499,7 @@ StatsCollector.prototype.processAudioLevelReport = function ()
 
 };
 
-},{"../../service/RTC/RTCBrowserType":88}],46:[function(require,module,exports){
+},{"../../service/RTC/RTCBrowserType":95}],49:[function(require,module,exports){
 /**
  * Created by hristo on 8/4/14.
  */
@@ -12144,7 +12632,7 @@ var statistics =
 
 
 module.exports = statistics;
-},{"../../service/RTC/StreamEventTypes.js":91,"../../service/xmpp/XMPPEvents":97,"./LocalStatsCollector.js":44,"./RTPStatsCollector.js":45,"events":98}],47:[function(require,module,exports){
+},{"../../service/RTC/StreamEventTypes.js":98,"../../service/xmpp/XMPPEvents":105,"./LocalStatsCollector.js":47,"./RTPStatsCollector.js":48,"events":106}],50:[function(require,module,exports){
 var i18n = require("i18next-client");
 var languages = require("../../service/translation/languages");
 var Settings = require("../settings/Settings");
@@ -12278,13 +12766,14 @@ module.exports = {
     }
 };
 
-},{"../../service/translation/languages":96,"../settings/Settings":38,"i18next-client":62}],48:[function(require,module,exports){
+},{"../../service/translation/languages":104,"../settings/Settings":41,"i18next-client":66}],51:[function(require,module,exports){
 /* jshint -W117 */
 var TraceablePeerConnection = require("./TraceablePeerConnection");
 var SDPDiffer = require("./SDPDiffer");
 var SDPUtil = require("./SDPUtil");
 var SDP = require("./SDP");
 var RTCBrowserType = require("../../service/RTC/RTCBrowserType");
+var async = require("async");
 
 // Jingle stuff
 function JingleSession(me, sid, connection, service) {
@@ -12333,10 +12822,21 @@ function JingleSession(me, sid, connection, service) {
      * by the application logic.
      */
     this.videoMuteByUser = false;
+    this.modifySourcesQueue = async.queue(this._modifySources.bind(this), 1);
+    // We start with the queue paused. We resume it when the signaling state is
+    // stable and the ice connection state is connected.
+    this.modifySourcesQueue.pause();
 }
 
-//TODO: this array must be removed when firefox implement multistream support
-JingleSession.notReceivedSSRCs = [];
+JingleSession.prototype.updateModifySourcesQueue = function() {
+    var signalingState = this.peerconnection.signalingState;
+    var iceConnectionState = this.peerconnection.iceConnectionState;
+    if (signalingState === 'stable' && iceConnectionState === 'connected') {
+        this.modifySourcesQueue.resume();
+    } else {
+        this.modifySourcesQueue.pause();
+    }
+};
 
 JingleSession.prototype.initiate = function (peerjid, isInitiator) {
     var self = this;
@@ -12363,8 +12863,16 @@ JingleSession.prototype.initiate = function (peerjid, isInitiator) {
         self.sendIceCandidate(event.candidate);
     };
     this.peerconnection.onaddstream = function (event) {
-        console.log("REMOTE STREAM ADDED: " + event.stream + " - " + event.stream.id);
-        self.remoteStreamAdded(event);
+        if (event.stream.id !== 'default') {
+            console.log("REMOTE STREAM ADDED: " + event.stream + " - " + event.stream.id);
+            self.remoteStreamAdded(event);
+        } else {
+            // This is a recvonly stream. Clients that implement Unified Plan,
+            // such as Firefox use recvonly "streams/channels/tracks" for
+            // receiving remote stream/tracks, as opposed to Plan B where there
+            // are only 3 channels: audio, video and data.
+            console.log("RECVONLY REMOTE STREAM IGNORED: " + event.stream + " - " + event.stream.id);
+        }
     };
     this.peerconnection.onremovestream = function (event) {
         // Remove the stream from remoteStreams
@@ -12373,9 +12881,11 @@ JingleSession.prototype.initiate = function (peerjid, isInitiator) {
     };
     this.peerconnection.onsignalingstatechange = function (event) {
         if (!(self && self.peerconnection)) return;
+        self.updateModifySourcesQueue();
     };
     this.peerconnection.oniceconnectionstatechange = function (event) {
         if (!(self && self.peerconnection)) return;
+        self.updateModifySourcesQueue();
         switch (self.peerconnection.iceConnectionState) {
             case 'connected':
                 this.startTime = new Date();
@@ -13055,7 +13565,17 @@ JingleSession.prototype.addSource = function (elem, fromJid) {
         });
         sdp.raw = sdp.session + sdp.media.join('');
     });
-    this.modifySources();
+
+    this.modifySourcesQueue.push(function() {
+        // When a source is added and if this is FF, a new channel is allocated
+        // for receiving the added source. We need to diffuse the SSRC of this
+        // new recvonly channel to the rest of the peers.
+        console.log('modify sources done');
+
+        var newSdp = new SDP(self.peerconnection.localDescription.sdp);
+        console.log("SDPs", mySdp, newSdp);
+        self.notifyMySSRCUpdate(mySdp, newSdp);
+    });
 };
 
 JingleSession.prototype.removeSource = function (elem, fromJid) {
@@ -13116,11 +13636,22 @@ JingleSession.prototype.removeSource = function (elem, fromJid) {
         });
         sdp.raw = sdp.session + sdp.media.join('');
     });
-    this.modifySources();
+
+    this.modifySourcesQueue.push(function() {
+        // When a source is removed and if this is FF, the recvonly channel that
+        // receives the remote stream is deactivated . We need to diffuse the
+        // recvonly SSRC removal to the rest of the peers.
+        console.log('modify sources done');
+
+        var newSdp = new SDP(self.peerconnection.localDescription.sdp);
+        console.log("SDPs", mySdp, newSdp);
+        self.notifyMySSRCUpdate(mySdp, newSdp);
+    });
 };
 
-JingleSession.prototype.modifySources = function (successCallback) {
+JingleSession.prototype._modifySources = function (successCallback, queueCallback) {
     var self = this;
+
     if (this.peerconnection.signalingState == 'closed') return;
     if (!(this.addssrc.length || this.removessrc.length || this.pendingop !== null || this.switchstreams)){
         // There is nothing to do since scheduled job might have been executed by another succeeding call
@@ -13128,21 +13659,7 @@ JingleSession.prototype.modifySources = function (successCallback) {
         if(successCallback){
             successCallback();
         }
-        return;
-    }
-
-    // FIXME: this is a big hack
-    // https://code.google.com/p/webrtc/issues/detail?id=2688
-    // ^ has been fixed.
-    if (!(this.peerconnection.signalingState == 'stable' && this.peerconnection.iceConnectionState == 'connected')) {
-        console.warn('modifySources not yet', this.peerconnection.signalingState, this.peerconnection.iceConnectionState);
-        this.wait = true;
-        window.setTimeout(function() { self.modifySources(successCallback); }, 250);
-        return;
-    }
-    if (this.wait) {
-        window.setTimeout(function() { self.modifySources(successCallback); }, 2500);
-        this.wait = false;
+        queueCallback();
         return;
     }
 
@@ -13182,6 +13699,7 @@ JingleSession.prototype.modifySources = function (successCallback) {
 
             if(self.signalingState == 'closed') {
                 console.error("createAnswer attempt on closed state");
+                queueCallback("createAnswer attempt on closed state");
                 return;
             }
 
@@ -13218,22 +13736,27 @@ JingleSession.prototype.modifySources = function (successCallback) {
                             if(successCallback){
                                 successCallback();
                             }
+                            queueCallback();
                         },
                         function(error) {
                             console.error('modified setLocalDescription failed', error);
+                            queueCallback(error);
                         }
                     );
                 },
                 function(error) {
                     console.error('modified answer failed', error);
+                    queueCallback(error);
                 }
             );
         },
         function(error) {
             console.error('modify failed', error);
+            queueCallback(error);
         }
     );
 };
+
 
 /**
  * Switches video streams.
@@ -13241,7 +13764,7 @@ JingleSession.prototype.modifySources = function (successCallback) {
  * @param oldStream old video stream of this session.
  * @param success_callback callback executed after successful stream switch.
  */
-JingleSession.prototype.switchStreams = function (new_stream, oldStream, success_callback) {
+JingleSession.prototype.switchStreams = function (new_stream, oldStream, success_callback, isAudio) {
 
     var self = this;
 
@@ -13256,7 +13779,8 @@ JingleSession.prototype.switchStreams = function (new_stream, oldStream, success
             self.peerconnection.addStream(new_stream);
     }
 
-    APP.RTC.switchVideoStreams(new_stream, oldStream);
+    if(!isAudio)
+        APP.RTC.switchVideoStreams(new_stream, oldStream);
 
     // Conference is not active
     if(!oldSdp || !self.peerconnection) {
@@ -13265,7 +13789,7 @@ JingleSession.prototype.switchStreams = function (new_stream, oldStream, success
     }
 
     self.switchstreams = true;
-    self.modifySources(function() {
+    self.modifySourcesQueue.push(function() {
         console.log('modify sources done');
 
         success_callback();
@@ -13373,7 +13897,23 @@ JingleSession.prototype.setVideoMute = function (mute, callback, options) {
 
     this.hardMuteVideo(mute);
 
-    this.modifySources(callback(mute));
+    var self = this;
+    var oldSdp = null;
+    if(self.peerconnection) {
+        if(self.peerconnection.localDescription) {
+            oldSdp = new SDP(self.peerconnection.localDescription.sdp);
+        }
+    }
+
+    this.modifySourcesQueue.push(function() {
+        console.log('modify sources done');
+
+        callback(mute);
+
+        var newSdp = new SDP(self.peerconnection.localDescription.sdp);
+        console.log("SDPs", oldSdp, newSdp);
+        self.notifyMySSRCUpdate(oldSdp, newSdp);
+    });
 };
 
 JingleSession.prototype.hardMuteVideo = function (muted) {
@@ -13619,7 +14159,7 @@ JingleSession.prototype.remoteStreamAdded = function (data, times) {
 
 module.exports = JingleSession;
 
-},{"../../service/RTC/RTCBrowserType":88,"./SDP":49,"./SDPDiffer":50,"./SDPUtil":51,"./TraceablePeerConnection":52}],49:[function(require,module,exports){
+},{"../../service/RTC/RTCBrowserType":95,"./SDP":52,"./SDPDiffer":53,"./SDPUtil":54,"./TraceablePeerConnection":55,"async":65}],52:[function(require,module,exports){
 /* jshint -W117 */
 var SDPUtil = require("./SDPUtil");
 
@@ -14241,7 +14781,7 @@ SDP.prototype.jingle2media = function (content) {
 module.exports = SDP;
 
 
-},{"./SDPUtil":51}],50:[function(require,module,exports){
+},{"./SDPUtil":54}],53:[function(require,module,exports){
 function SDPDiffer(mySDP, otherSDP) {
     this.mySDP = mySDP;
     this.otherSDP = otherSDP;
@@ -14407,7 +14947,7 @@ SDPDiffer.prototype.toJingle = function(modify) {
 };
 
 module.exports = SDPDiffer;
-},{}],51:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 SDPUtil = {
     iceparams: function (mediadesc, sessiondesc) {
         var data = null;
@@ -14757,7 +15297,7 @@ SDPUtil = {
     }
 };
 module.exports = SDPUtil;
-},{}],52:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 function TraceablePeerConnection(ice_config, constraints) {
     var self = this;
     var RTCPeerconnection = navigator.mozGetUserMedia ? mozRTCPeerConnection : webkitRTCPeerConnection;
@@ -14939,7 +15479,7 @@ TraceablePeerConnection.prototype.setLocalDescription = function (description, s
     this.trace('setLocalDescription::preTransform (Plan B)', dumpSDP(description));
     // if we're running on FF, transform to Plan A first.
     if (navigator.mozGetUserMedia) {
-        description = this.interop.toPlanA(description);
+        description = this.interop.toUnifiedPlan(description);
     } else {
         description = APP.simulcast.transformLocalDescription(description);
     }
@@ -14966,7 +15506,7 @@ TraceablePeerConnection.prototype.setRemoteDescription = function (description, 
     this.trace('setRemoteDescription::preTransform (Plan B)', dumpSDP(description));
     // if we're running on FF, transform to Plan A first.
     if (navigator.mozGetUserMedia) {
-        description = this.interop.toPlanA(description);
+        description = this.interop.toUnifiedPlan(description);
     }
     else {
         description = APP.simulcast.transformRemoteDescription(description);
@@ -15077,7 +15617,7 @@ TraceablePeerConnection.prototype.getStats = function(callback, errback) {
 module.exports = TraceablePeerConnection;
 
 
-},{"sdp-interop":80}],53:[function(require,module,exports){
+},{"sdp-interop":87}],56:[function(require,module,exports){
 /* global $, $iq, APP, config, connection, UI, messageHandler,
  roomName, sessionTerminated, Strophe, Util */
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
@@ -15165,7 +15705,7 @@ var Moderator = {
         }
     },
 
-    onMucLeft: function (jid) {
+    onMucMemberLeft: function (jid) {
         console.info("Someone left is it focus ? " + jid);
         var resource = Strophe.getResourceFromJid(jid);
         if (resource === 'focus' && !this.xmppService.sessionTerminated) {
@@ -15255,6 +15795,20 @@ var Moderator = {
             elem.c(
                 'property',
                 { name: 'openSctp', value: config.openSctp})
+                .up();
+        }
+        if(config.startAudioMuted !== undefined)
+        {
+            elem.c(
+                'property',
+                { name: 'startAudioMuted', value: config.startAudioMuted})
+                .up();
+        }
+        if(config.startVideoMuted !== undefined)
+        {
+            elem.c(
+                'property',
+                { name: 'startVideoMuted', value: config.startVideoMuted})
                 .up();
         }
         elem.up();
@@ -15495,7 +16049,7 @@ module.exports = Moderator;
 
 
 
-},{"../../service/authentication/AuthenticationEvents":93,"../../service/xmpp/XMPPEvents":97,"../settings/Settings":38}],54:[function(require,module,exports){
+},{"../../service/authentication/AuthenticationEvents":100,"../../service/xmpp/XMPPEvents":105,"../settings/Settings":41}],57:[function(require,module,exports){
 /* global $, $iq, config, connection, focusMucJid, messageHandler, Moderator,
    Toolbar, Util */
 var Moderator = require("./moderator");
@@ -15651,7 +16205,7 @@ var Recording = {
 }
 
 module.exports = Recording;
-},{"./moderator":53}],55:[function(require,module,exports){
+},{"./moderator":56}],58:[function(require,module,exports){
 /* jshint -W117 */
 /* a simple MUC connection plugin
  * can only handle a single MUC room
@@ -15682,6 +16236,15 @@ module.exports = function(XMPP, eventEmitter) {
         initPresenceMap: function (myroomjid) {
             this.presMap['to'] = myroomjid;
             this.presMap['xns'] = 'http://jabber.org/protocol/muc';
+            if(APP.RTC.localAudio.isMuted())
+            {
+                this.addAudioInfoToPresence(true);
+            }
+
+            if(APP.RTC.localVideo.isMuted())
+            {
+                this.addVideoInfoToPresence(true);
+            }
         },
         doJoin: function (jid, password) {
             this.myroomjid = jid;
@@ -15797,6 +16360,13 @@ module.exports = function(XMPP, eventEmitter) {
                 $(document).trigger('videomuted.muc', [from, videoMuted.text()]);
             }
 
+            var startMuted = $(pres).find('>startmuted');
+            if (startMuted.length)
+            {
+                eventEmitter.emit(XMPPEvents.START_MUTED,
+                    startMuted.attr("audio") === "true", startMuted.attr("video") === "true");
+            }
+
             var devices = $(pres).find('>devices');
             if(devices.length)
             {
@@ -15855,7 +16425,7 @@ module.exports = function(XMPP, eventEmitter) {
                 if (this.role !== member.role) {
                     this.role = member.role;
 
-                    eventEmitter.emit(XMPPEvents.LOCALROLE_CHANGED,
+                    eventEmitter.emit(XMPPEvents.LOCAL_ROLE_CHANGED,
                         from, member, pres, Moderator.isModerator());
                 }
                 if (!this.joined) {
@@ -15878,7 +16448,7 @@ module.exports = function(XMPP, eventEmitter) {
                     if (email.length > 0) {
                         id = email.text();
                     }
-                    eventEmitter.emit(XMPPEvents.MUC_ENTER, from, id, member.displayName);
+                    eventEmitter.emit(XMPPEvents.MUC_MEMBER_JOINED, from, id, member.displayName);
                 }
             } else {
                 // Presence update for existing participant
@@ -15944,19 +16514,11 @@ module.exports = function(XMPP, eventEmitter) {
         onPresenceError: function (pres) {
             var from = pres.getAttribute('from');
             if ($(pres).find('>error[type="auth"]>not-authorized[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
-                console.log('on password required from:', from);
-
+                console.log('on password required', from);
                 var self = this;
-                var lockCode = APP.xmpp.getLockCode();
-                if (lockCode.length > 0) {
-                    console.log('strophe.emuc.onPresenceError entering locked room with code:', lockCode);
-                    self.doJoin(from, lockCode);
-                }
-                else {
-                    eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
-                        self.doJoin(from, value);
-                    });
-                }
+                eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
+                    self.doJoin(from, value);
+                });
             } else if ($(pres).find(
                 '>error[type="cancel"]>not-allowed[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
                 var toDomain = Strophe.getDomainFromJid(pres.getAttribute('to'));
@@ -16159,6 +16721,15 @@ module.exports = function(XMPP, eventEmitter) {
                                     || 'sendrecv' }
                         ).up();
                     }
+                pres.up();
+            }
+
+            if(this.presMap["startMuted"] !== undefined)
+            {
+                pres.c("startmuted", {audio: this.presMap["startMuted"].audio,
+                    video: this.presMap["startMuted"].video,
+                    xmlns: "http://jitsi.org/jitmeet/start-muted"});
+                delete this.presMap["startMuted"];
             }
 
             pres.up();
@@ -16239,6 +16810,9 @@ module.exports = function(XMPP, eventEmitter) {
         addUserIdToPresence: function (userId) {
             this.presMap['userId'] = userId;
         },
+        addStartMutedToPresence: function (audio, video) {
+            this.presMap["startMuted"] = {audio: audio, video: video};
+        },
         isModerator: function () {
             return this.role === 'moderator';
         },
@@ -16250,7 +16824,7 @@ module.exports = function(XMPP, eventEmitter) {
         },
         onParticipantLeft: function (jid) {
 
-            eventEmitter.emit(XMPPEvents.MUC_LEFT, jid);
+            eventEmitter.emit(XMPPEvents.MUC_MEMBER_LEFT, jid);
 
             this.connection.jingle.terminateByJid(jid);
 
@@ -16259,7 +16833,7 @@ module.exports = function(XMPP, eventEmitter) {
                     [jid, this.getPrezi(jid)]);
             }
 
-            Moderator.onMucLeft(jid);
+            Moderator.onMucMemberLeft(jid);
         },
         parsePresence: function (from, memeber, pres) {
             if($(pres).find(">bridgeIsDown").length > 0 && !bridgeIsDown) {
@@ -16283,8 +16857,6 @@ module.exports = function(XMPP, eventEmitter) {
                 //console.log(jid, 'assoc ssrc', ssrc.getAttribute('type'), ssrc.getAttribute('ssrc'));
                 var ssrcV = ssrc.getAttribute('ssrc');
                 self.ssrc2jid[ssrcV] = from;
-                JingleSession.notReceivedSSRCs.push(ssrcV);
-
 
                 var type = ssrc.getAttribute('type');
 
@@ -16294,7 +16866,7 @@ module.exports = function(XMPP, eventEmitter) {
 
             });
 
-            eventEmitter.emit(XMPPEvents.CHANGED_STREAMS, from, changedStreams);
+            eventEmitter.emit(XMPPEvents.STREAMS_CHANGED, from, changedStreams);
 
             var displayName = !config.displayJids
                 ? memeber.displayName : Strophe.getResourceFromJid(from);
@@ -16317,7 +16889,7 @@ module.exports = function(XMPP, eventEmitter) {
 };
 
 
-},{"../../service/xmpp/XMPPEvents":97,"./JingleSession":48,"./moderator":53}],56:[function(require,module,exports){
+},{"../../service/xmpp/XMPPEvents":105,"./JingleSession":51,"./moderator":56}],59:[function(require,module,exports){
 /* jshint -W117 */
 
 var JingleSession = require("./JingleSession");
@@ -16428,6 +17000,14 @@ module.exports = function(XMPP, eventEmitter)
             // see http://xmpp.org/extensions/xep-0166.html#concepts-session
             switch (action) {
                 case 'session-initiate':
+                    var startMuted = $(iq).find('jingle>startmuted');
+                    if(startMuted && startMuted.length > 0)
+                    {
+                        var audioMuted = startMuted.attr("audio");
+                        var videoMuted = startMuted.attr("video");
+                        APP.UI.setInitialMuteFromFocus((audioMuted === "true"),
+                            (videoMuted === "true"));
+                    }
                     sess = new JingleSession(
                         $(iq).attr('to'), $(iq).find('jingle').attr('sid'),
                         this.connection, XMPP);
@@ -16656,7 +17236,7 @@ module.exports = function(XMPP, eventEmitter)
 };
 
 
-},{"../../service/xmpp/XMPPEvents":97,"./JingleSession":48}],57:[function(require,module,exports){
+},{"../../service/xmpp/XMPPEvents":105,"./JingleSession":51}],60:[function(require,module,exports){
 /* global Strophe */
 module.exports = function () {
 
@@ -16677,7 +17257,7 @@ module.exports = function () {
         }
     });
 };
-},{}],58:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 /* global $, $iq, config, connection, focusMucJid, forceMuted,
    setAudioMuted, Strophe */
 /**
@@ -16736,7 +17316,7 @@ module.exports = function (XMPP) {
         }
     });
 }
-},{}],59:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 /* jshint -W117 */
 module.exports = function() {
     Strophe.addConnectionPlugin('rayo',
@@ -16833,7 +17413,7 @@ module.exports = function() {
     );
 };
 
-},{}],60:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 /**
  * Strophe logger implementation. Logs from level WARN and above.
  */
@@ -16877,7 +17457,7 @@ module.exports = function () {
     };
 };
 
-},{}],61:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 /* global $, APP, config, Strophe*/
 var Moderator = require("./moderator");
 var EventEmitter = require("events");
@@ -16889,75 +17469,149 @@ var StreamEventTypes = require("../../service/RTC/StreamEventTypes");
 var RTCEvents = require("../../service/RTC/RTCEvents");
 var UIEvents = require("../../service/UI/UIEvents");
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
+var retry = require('retry');
 
 var eventEmitter = new EventEmitter();
 var connection = null;
 var authenticatedUser = false;
-var lockCode = '';
 
 function connect(jid, password) {
-    connection = XMPP.createConnection();
-    Moderator.setConnection(connection);
 
-    if (connection.disco) {
-        // for chrome, add multistream cap
-    }
-    connection.jingle.pc_constraints = APP.RTC.getPCConstraints();
-    if (config.useIPv6) {
-        // https://code.google.com/p/webrtc/issues/detail?id=2828
-        if (!connection.jingle.pc_constraints.optional)
-            connection.jingle.pc_constraints.optional = [];
-        connection.jingle.pc_constraints.optional.push({googIPv6: true});
-    }
+    var faultTolerantConnect = retry.operation({
+        retries: 3
+    });
 
-    // Include user info in MUC presence
-    var settings = Settings.getSettings();
-    if (settings.email) {
-        connection.emuc.addEmailToPresence(settings.email);
-    }
-    if (settings.uid) {
-        connection.emuc.addUserIdToPresence(settings.uid);
-    }
-    if (settings.displayName) {
-        connection.emuc.addDisplayNameToPresence(settings.displayName);
-    }
+    // fault tolerant connect
+    faultTolerantConnect.attempt(function () {
 
-    var anonymousConnectionFailed = false;
-    connection.connect(jid, password, function (status, msg) {
-        console.log('Strophe status changed to',
-            Strophe.getStatusString(status));
-        if (status === Strophe.Status.CONNECTED) {
-            if (config.useStunTurn) {
-                connection.jingle.getStunAndTurnCredentials();
-            }
+        connection = XMPP.createConnection();
+        Moderator.setConnection(connection);
 
-            console.info("My Jabber ID: " + connection.jid);
-
-            if(password)
-                authenticatedUser = true;
-            maybeDoJoin();
-
-            // handle locking of room
-            //if (lockCode !== '' && lockCode.length > 0 && Moderator.isModerator()) {
-            //    console.log('xmpp.connect ... locking room ... code: ', lockCode);
-            //    lockRoom(code, onSuccess, onError, onNotSupported);
-            //}
-        } else if (status === Strophe.Status.CONNFAIL) {
-            if(msg === 'x-strophe-bad-non-anon-jid') {
-                anonymousConnectionFailed = true;
-            }
-        } else if (status === Strophe.Status.DISCONNECTED) {
-            if(anonymousConnectionFailed) {
-                // prompt user for username and password
-                XMPP.promptLogin();
-            }
-        } else if (status === Strophe.Status.AUTHFAIL) {
-            // wrong password or username, prompt user
-            XMPP.promptLogin();
-
+        if (connection.disco) {
+            // for chrome, add multistream cap
         }
+        connection.jingle.pc_constraints = APP.RTC.getPCConstraints();
+        if (config.useIPv6) {
+            // https://code.google.com/p/webrtc/issues/detail?id=2828
+            if (!connection.jingle.pc_constraints.optional)
+                connection.jingle.pc_constraints.optional = [];
+            connection.jingle.pc_constraints.optional.push({googIPv6: true});
+        }
+
+        // Include user info in MUC presence
+        var settings = Settings.getSettings();
+        if (settings.email) {
+            connection.emuc.addEmailToPresence(settings.email);
+        }
+        if (settings.uid) {
+            connection.emuc.addUserIdToPresence(settings.uid);
+        }
+        if (settings.displayName) {
+            connection.emuc.addDisplayNameToPresence(settings.displayName);
+        }
+
+
+        // connection.connect() starts the connection process.
+        //
+        // As the connection process proceeds, the user supplied callback will
+        // be triggered multiple times with status updates. The callback should
+        // take two arguments - the status code and the error condition.
+        //
+        // The status code will be one of the values in the Strophe.Status
+        // constants. The error condition will be one of the conditions defined
+        // in RFC 3920 or the condition ‘strophe-parsererror’.
+        //
+        // The Parameters wait, hold and route are optional and only relevant
+        // for BOSH connections. Please see XEP 124 for a more detailed
+        // explanation of the optional parameters.
+        //
+        // Connection status constants for use by the connection handler
+        // callback.
+        //
+        //  Status.ERROR - An error has occurred (websockets specific)
+        //  Status.CONNECTING - The connection is currently being made
+        //  Status.CONNFAIL - The connection attempt failed
+        //  Status.AUTHENTICATING - The connection is authenticating
+        //  Status.AUTHFAIL - The authentication attempt failed
+        //  Status.CONNECTED - The connection has succeeded
+        //  Status.DISCONNECTED - The connection has been terminated
+        //  Status.DISCONNECTING - The connection is currently being terminated
+        //  Status.ATTACHED - The connection has been attached
+
+        var anonymousConnectionFailed = false;
+        var connectionFailed = false;
+        var lastErrorMsg;
+        connection.connect(jid, password, function (status, msg) {
+            console.log('Strophe status changed to',
+                Strophe.getStatusString(status), msg);
+            if (status === Strophe.Status.CONNECTED) {
+                if (config.useStunTurn) {
+                    connection.jingle.getStunAndTurnCredentials();
+                }
+
+                console.info("My Jabber ID: " + connection.jid);
+
+                if (password)
+                    authenticatedUser = true;
+                maybeDoJoin();
+            } else if (status === Strophe.Status.CONNFAIL) {
+                if (msg === 'x-strophe-bad-non-anon-jid') {
+                    anonymousConnectionFailed = true;
+                } else {
+                    connectionFailed = true;
+                }
+                lastErrorMsg = msg;
+            } else if (status === Strophe.Status.DISCONNECTED) {
+                if (anonymousConnectionFailed) {
+                    // prompt user for username and password
+                    XMPP.promptLogin();
+                } else {
+
+                    // Strophe already has built-in HTTP/BOSH error handling and
+                    // request retry logic. Requests are resent automatically
+                    // until their error count reaches 5. Strophe.js disconnects
+                    // if the error count is > 5. We are not replicating this
+                    // here.
+                    //
+                    // The "problem" is that failed HTTP/BOSH requests don't
+                    // trigger a callback with a status update, so when a
+                    // callback with status Strophe.Status.DISCONNECTED arrives,
+                    // we can't be sure if it's a graceful disconnect or if it's
+                    // triggered by some HTTP/BOSH error.
+                    //
+                    // But that's a minor issue in Jitsi Meet as we never
+                    // disconnect anyway, not even when the user closes the
+                    // browser window (which is kind of wrong, but the point is
+                    // that we should never ever get disconnected).
+                    //
+                    // On the other hand, failed connections due to XMPP layer
+                    // errors, trigger a callback with status Strophe.Status.CONNFAIL.
+                    //
+                    // Here we implement retry logic for failed connections due
+                    // to XMPP layer errors and we display an error to the user
+                    // if we get disconnected from the XMPP server permanently.
+
+                    // If the connection failed, retry.
+                    if (connectionFailed
+                        && faultTolerantConnect.retry("connection-failed")) {
+                        return;
+                    }
+
+                    // If we failed to connect to the XMPP server, fire an event
+                    // to let all the interested module now about it.
+                    eventEmitter.emit(XMPPEvents.CONNECTION_FAILED,
+                        msg ? msg : lastErrorMsg);
+                }
+            } else if (status === Strophe.Status.AUTHFAIL) {
+                // wrong password or username, prompt user
+                XMPP.promptLogin();
+
+            }
+        });
     });
 }
+
+
 
 function maybeDoJoin() {
     if (connection && connection.connected &&
@@ -16996,8 +17650,13 @@ function registerListeners() {
     });
 }
 
-function setupEvents() {
-    $(window).bind('beforeunload', function () {
+var unload = (function () {
+    var unloaded = false;
+
+    return function () {
+        if (unloaded) { return; }
+        unloaded = true;
+
         if (connection && connection.connected) {
             // ensure signout
             $.ajax({
@@ -17006,27 +17665,45 @@ function setupEvents() {
                 async: false,
                 cache: false,
                 contentType: 'application/xml',
-                data: "<body rid='" + (connection.rid || connection._proto.rid)
-                    + "' xmlns='http://jabber.org/protocol/httpbind' sid='"
-                    + (connection.sid || connection._proto.sid)
-                    + "' type='terminate'>" +
-                    "<presence xmlns='jabber:client' type='unavailable'/>" +
-                    "</body>",
+                data: "<body rid='" + (connection.rid || connection._proto.rid) +
+                    "' xmlns='http://jabber.org/protocol/httpbind' sid='" +
+                    (connection.sid || connection._proto.sid)  +
+                    "' type='terminate'>" +
+                "<presence xmlns='jabber:client' type='unavailable'/>" +
+                "</body>",
                 success: function (data) {
                     console.log('signed out');
                     console.log(data);
                 },
                 error: function (XMLHttpRequest, textStatus, errorThrown) {
                     console.log('signout error',
-                            textStatus + ' (' + errorThrown + ')');
+                        textStatus + ' (' + errorThrown + ')');
                 }
             });
         }
         XMPP.disposeConference(true);
-    });
+    };
+})();
+
+function setupEvents() {
+    // In recent versions of FF the 'beforeunload' event is not fired when the
+    // window or the tab is closed. It is only fired when we leave the page
+    // (change URL). If this participant doesn't unload properly, then it
+    // becomes a ghost for the rest of the participants that stay in the
+    // conference. Thankfully handling the 'unload' event in addition to the
+    // 'beforeunload' event seems to garante the execution of the 'unload'
+    // method at least once.
+    //
+    // The 'unload' method can safely be run multiple times, it will actually do
+    // something only the first time that it's run, so we're don't have to worry
+    // about browsers that fire both events.
+
+    $(window).bind('beforeunload', unload);
+    $(window).bind('unload', unload);
 }
 
 var XMPP = {
+    getConnection: function(){ return connection; },
     sessionTerminated: false,
 
     /**
@@ -17052,9 +17729,6 @@ var XMPP = {
         }
         var jid = configDomain || window.location.hostname;
         connect(jid, null);
-    },
-    setLockcode: function (code) {
-        lockCode = code;
     },
     createConnection: function () {
         var bosh = config.bosh || '/http-bind';
@@ -17148,10 +17822,10 @@ var XMPP = {
     isExternalAuthEnabled: function () {
         return Moderator.isExternalAuthEnabled();
     },
-    switchStreams: function (stream, oldStream, callback) {
+    switchStreams: function (stream, oldStream, callback, isAudio) {
         if (connection && connection.jingle.activecall) {
             // FIXME: will block switchInProgress on true value in case of exception
-            connection.jingle.activecall.switchStreams(stream, oldStream, callback);
+            connection.jingle.activecall.switchStreams(stream, oldStream, callback, isAudio);
         } else {
             // We are done immediately
             console.warn("No conference handler or conference not started yet");
@@ -17159,6 +17833,8 @@ var XMPP = {
         }
     },
     sendVideoInfoPresence: function (mute) {
+        if(!connection)
+            return;
         connection.emuc.addVideoInfoToPresence(mute);
         connection.emuc.sendPresence();
     },
@@ -17202,10 +17878,17 @@ var XMPP = {
         // It is not clear what is the right way to handle multiple tracks.
         // So at least make sure that they are all muted or all unmuted and
         // that we send presence just once.
-        APP.RTC.localAudio.mute();
+        APP.RTC.localAudio.setMute(!mute);
         // isMuted is the opposite of audioEnabled
-        connection.emuc.addAudioInfoToPresence(mute);
-        connection.emuc.sendPresence();
+        this.sendAudioInfoPresence(mute, callback);
+        return true;
+    },
+    sendAudioInfoPresence: function(mute, callback)
+    {
+        if(connection) {
+            connection.emuc.addAudioInfoToPresence(mute);
+            connection.emuc.sendPresence();
+        }
         callback();
         return true;
     },
@@ -17280,6 +17963,12 @@ var XMPP = {
             case "devices":
                 connection.emuc.addDevicesToPresence(value);
                 break;
+            case "startMuted":
+                if(!Moderator.isModerator())
+                    return;
+                connection.emuc.addStartMutedToPresence(value[0],
+                    value[1]);
+                break;
             default :
                 console.log("Unknown tag for presence: " + name);
                 return;
@@ -17343,17 +18032,7 @@ var XMPP = {
         connection.emuc.setSubject(topic);
     },
     lockRoom: function (key, onSuccess, onError, onNotSupported) {
-        console.log('xmpp.lockRoom ... lockCode:', lockCode);
-        if (lockCode !== '' && lockCode.length > 0) key = lockCode;
         connection.emuc.lockRoom(key, onSuccess, onError, onNotSupported);
-    },
-    setLockCode: function (code) {
-        console.log('xmpp.setLockCode code:', code);
-        lockCode = code;
-    },
-    getLockCode: function () {
-        console.log('xmpp.getLockCode: ', lockCode);
-        return lockCode;
     },
     dial: function (to, from, roomName,roomPass) {
         connection.rayo.dial(to, from, roomName,roomPass);
@@ -17394,7 +18073,1134 @@ var XMPP = {
 
 module.exports = XMPP;
 
-},{"../../service/RTC/RTCEvents":89,"../../service/RTC/StreamEventTypes":91,"../../service/UI/UIEvents":92,"../../service/xmpp/XMPPEvents":97,"../settings/Settings":38,"./SDP":49,"./moderator":53,"./recording":54,"./strophe.emuc":55,"./strophe.jingle":56,"./strophe.logger":57,"./strophe.moderate":58,"./strophe.rayo":59,"./strophe.util":60,"events":98,"pako":63}],62:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96,"../../service/RTC/StreamEventTypes":98,"../../service/UI/UIEvents":99,"../../service/xmpp/XMPPEvents":105,"../settings/Settings":41,"./SDP":52,"./moderator":56,"./recording":57,"./strophe.emuc":58,"./strophe.jingle":59,"./strophe.logger":60,"./strophe.moderate":61,"./strophe.rayo":62,"./strophe.util":63,"events":106,"pako":67,"retry":83}],65:[function(require,module,exports){
+(function (process){
+/*!
+ * async
+ * https://github.com/caolan/async
+ *
+ * Copyright 2010-2014 Caolan McMahon
+ * Released under the MIT license
+ */
+/*jshint onevar: false, indent:4 */
+/*global setImmediate: false, setTimeout: false, console: false */
+(function () {
+
+    var async = {};
+
+    // global on the server, window in the browser
+    var root, previous_async;
+
+    root = this;
+    if (root != null) {
+      previous_async = root.async;
+    }
+
+    async.noConflict = function () {
+        root.async = previous_async;
+        return async;
+    };
+
+    function only_once(fn) {
+        var called = false;
+        return function() {
+            if (called) throw new Error("Callback was already called.");
+            called = true;
+            fn.apply(root, arguments);
+        }
+    }
+
+    //// cross-browser compatiblity functions ////
+
+    var _toString = Object.prototype.toString;
+
+    var _isArray = Array.isArray || function (obj) {
+        return _toString.call(obj) === '[object Array]';
+    };
+
+    var _each = function (arr, iterator) {
+        if (arr.forEach) {
+            return arr.forEach(iterator);
+        }
+        for (var i = 0; i < arr.length; i += 1) {
+            iterator(arr[i], i, arr);
+        }
+    };
+
+    var _map = function (arr, iterator) {
+        if (arr.map) {
+            return arr.map(iterator);
+        }
+        var results = [];
+        _each(arr, function (x, i, a) {
+            results.push(iterator(x, i, a));
+        });
+        return results;
+    };
+
+    var _reduce = function (arr, iterator, memo) {
+        if (arr.reduce) {
+            return arr.reduce(iterator, memo);
+        }
+        _each(arr, function (x, i, a) {
+            memo = iterator(memo, x, i, a);
+        });
+        return memo;
+    };
+
+    var _keys = function (obj) {
+        if (Object.keys) {
+            return Object.keys(obj);
+        }
+        var keys = [];
+        for (var k in obj) {
+            if (obj.hasOwnProperty(k)) {
+                keys.push(k);
+            }
+        }
+        return keys;
+    };
+
+    //// exported async module functions ////
+
+    //// nextTick implementation with browser-compatible fallback ////
+    if (typeof process === 'undefined' || !(process.nextTick)) {
+        if (typeof setImmediate === 'function') {
+            async.nextTick = function (fn) {
+                // not a direct alias for IE10 compatibility
+                setImmediate(fn);
+            };
+            async.setImmediate = async.nextTick;
+        }
+        else {
+            async.nextTick = function (fn) {
+                setTimeout(fn, 0);
+            };
+            async.setImmediate = async.nextTick;
+        }
+    }
+    else {
+        async.nextTick = process.nextTick;
+        if (typeof setImmediate !== 'undefined') {
+            async.setImmediate = function (fn) {
+              // not a direct alias for IE10 compatibility
+              setImmediate(fn);
+            };
+        }
+        else {
+            async.setImmediate = async.nextTick;
+        }
+    }
+
+    async.each = function (arr, iterator, callback) {
+        callback = callback || function () {};
+        if (!arr.length) {
+            return callback();
+        }
+        var completed = 0;
+        _each(arr, function (x) {
+            iterator(x, only_once(done) );
+        });
+        function done(err) {
+          if (err) {
+              callback(err);
+              callback = function () {};
+          }
+          else {
+              completed += 1;
+              if (completed >= arr.length) {
+                  callback();
+              }
+          }
+        }
+    };
+    async.forEach = async.each;
+
+    async.eachSeries = function (arr, iterator, callback) {
+        callback = callback || function () {};
+        if (!arr.length) {
+            return callback();
+        }
+        var completed = 0;
+        var iterate = function () {
+            iterator(arr[completed], function (err) {
+                if (err) {
+                    callback(err);
+                    callback = function () {};
+                }
+                else {
+                    completed += 1;
+                    if (completed >= arr.length) {
+                        callback();
+                    }
+                    else {
+                        iterate();
+                    }
+                }
+            });
+        };
+        iterate();
+    };
+    async.forEachSeries = async.eachSeries;
+
+    async.eachLimit = function (arr, limit, iterator, callback) {
+        var fn = _eachLimit(limit);
+        fn.apply(null, [arr, iterator, callback]);
+    };
+    async.forEachLimit = async.eachLimit;
+
+    var _eachLimit = function (limit) {
+
+        return function (arr, iterator, callback) {
+            callback = callback || function () {};
+            if (!arr.length || limit <= 0) {
+                return callback();
+            }
+            var completed = 0;
+            var started = 0;
+            var running = 0;
+
+            (function replenish () {
+                if (completed >= arr.length) {
+                    return callback();
+                }
+
+                while (running < limit && started < arr.length) {
+                    started += 1;
+                    running += 1;
+                    iterator(arr[started - 1], function (err) {
+                        if (err) {
+                            callback(err);
+                            callback = function () {};
+                        }
+                        else {
+                            completed += 1;
+                            running -= 1;
+                            if (completed >= arr.length) {
+                                callback();
+                            }
+                            else {
+                                replenish();
+                            }
+                        }
+                    });
+                }
+            })();
+        };
+    };
+
+
+    var doParallel = function (fn) {
+        return function () {
+            var args = Array.prototype.slice.call(arguments);
+            return fn.apply(null, [async.each].concat(args));
+        };
+    };
+    var doParallelLimit = function(limit, fn) {
+        return function () {
+            var args = Array.prototype.slice.call(arguments);
+            return fn.apply(null, [_eachLimit(limit)].concat(args));
+        };
+    };
+    var doSeries = function (fn) {
+        return function () {
+            var args = Array.prototype.slice.call(arguments);
+            return fn.apply(null, [async.eachSeries].concat(args));
+        };
+    };
+
+
+    var _asyncMap = function (eachfn, arr, iterator, callback) {
+        arr = _map(arr, function (x, i) {
+            return {index: i, value: x};
+        });
+        if (!callback) {
+            eachfn(arr, function (x, callback) {
+                iterator(x.value, function (err) {
+                    callback(err);
+                });
+            });
+        } else {
+            var results = [];
+            eachfn(arr, function (x, callback) {
+                iterator(x.value, function (err, v) {
+                    results[x.index] = v;
+                    callback(err);
+                });
+            }, function (err) {
+                callback(err, results);
+            });
+        }
+    };
+    async.map = doParallel(_asyncMap);
+    async.mapSeries = doSeries(_asyncMap);
+    async.mapLimit = function (arr, limit, iterator, callback) {
+        return _mapLimit(limit)(arr, iterator, callback);
+    };
+
+    var _mapLimit = function(limit) {
+        return doParallelLimit(limit, _asyncMap);
+    };
+
+    // reduce only has a series version, as doing reduce in parallel won't
+    // work in many situations.
+    async.reduce = function (arr, memo, iterator, callback) {
+        async.eachSeries(arr, function (x, callback) {
+            iterator(memo, x, function (err, v) {
+                memo = v;
+                callback(err);
+            });
+        }, function (err) {
+            callback(err, memo);
+        });
+    };
+    // inject alias
+    async.inject = async.reduce;
+    // foldl alias
+    async.foldl = async.reduce;
+
+    async.reduceRight = function (arr, memo, iterator, callback) {
+        var reversed = _map(arr, function (x) {
+            return x;
+        }).reverse();
+        async.reduce(reversed, memo, iterator, callback);
+    };
+    // foldr alias
+    async.foldr = async.reduceRight;
+
+    var _filter = function (eachfn, arr, iterator, callback) {
+        var results = [];
+        arr = _map(arr, function (x, i) {
+            return {index: i, value: x};
+        });
+        eachfn(arr, function (x, callback) {
+            iterator(x.value, function (v) {
+                if (v) {
+                    results.push(x);
+                }
+                callback();
+            });
+        }, function (err) {
+            callback(_map(results.sort(function (a, b) {
+                return a.index - b.index;
+            }), function (x) {
+                return x.value;
+            }));
+        });
+    };
+    async.filter = doParallel(_filter);
+    async.filterSeries = doSeries(_filter);
+    // select alias
+    async.select = async.filter;
+    async.selectSeries = async.filterSeries;
+
+    var _reject = function (eachfn, arr, iterator, callback) {
+        var results = [];
+        arr = _map(arr, function (x, i) {
+            return {index: i, value: x};
+        });
+        eachfn(arr, function (x, callback) {
+            iterator(x.value, function (v) {
+                if (!v) {
+                    results.push(x);
+                }
+                callback();
+            });
+        }, function (err) {
+            callback(_map(results.sort(function (a, b) {
+                return a.index - b.index;
+            }), function (x) {
+                return x.value;
+            }));
+        });
+    };
+    async.reject = doParallel(_reject);
+    async.rejectSeries = doSeries(_reject);
+
+    var _detect = function (eachfn, arr, iterator, main_callback) {
+        eachfn(arr, function (x, callback) {
+            iterator(x, function (result) {
+                if (result) {
+                    main_callback(x);
+                    main_callback = function () {};
+                }
+                else {
+                    callback();
+                }
+            });
+        }, function (err) {
+            main_callback();
+        });
+    };
+    async.detect = doParallel(_detect);
+    async.detectSeries = doSeries(_detect);
+
+    async.some = function (arr, iterator, main_callback) {
+        async.each(arr, function (x, callback) {
+            iterator(x, function (v) {
+                if (v) {
+                    main_callback(true);
+                    main_callback = function () {};
+                }
+                callback();
+            });
+        }, function (err) {
+            main_callback(false);
+        });
+    };
+    // any alias
+    async.any = async.some;
+
+    async.every = function (arr, iterator, main_callback) {
+        async.each(arr, function (x, callback) {
+            iterator(x, function (v) {
+                if (!v) {
+                    main_callback(false);
+                    main_callback = function () {};
+                }
+                callback();
+            });
+        }, function (err) {
+            main_callback(true);
+        });
+    };
+    // all alias
+    async.all = async.every;
+
+    async.sortBy = function (arr, iterator, callback) {
+        async.map(arr, function (x, callback) {
+            iterator(x, function (err, criteria) {
+                if (err) {
+                    callback(err);
+                }
+                else {
+                    callback(null, {value: x, criteria: criteria});
+                }
+            });
+        }, function (err, results) {
+            if (err) {
+                return callback(err);
+            }
+            else {
+                var fn = function (left, right) {
+                    var a = left.criteria, b = right.criteria;
+                    return a < b ? -1 : a > b ? 1 : 0;
+                };
+                callback(null, _map(results.sort(fn), function (x) {
+                    return x.value;
+                }));
+            }
+        });
+    };
+
+    async.auto = function (tasks, callback) {
+        callback = callback || function () {};
+        var keys = _keys(tasks);
+        var remainingTasks = keys.length
+        if (!remainingTasks) {
+            return callback();
+        }
+
+        var results = {};
+
+        var listeners = [];
+        var addListener = function (fn) {
+            listeners.unshift(fn);
+        };
+        var removeListener = function (fn) {
+            for (var i = 0; i < listeners.length; i += 1) {
+                if (listeners[i] === fn) {
+                    listeners.splice(i, 1);
+                    return;
+                }
+            }
+        };
+        var taskComplete = function () {
+            remainingTasks--
+            _each(listeners.slice(0), function (fn) {
+                fn();
+            });
+        };
+
+        addListener(function () {
+            if (!remainingTasks) {
+                var theCallback = callback;
+                // prevent final callback from calling itself if it errors
+                callback = function () {};
+
+                theCallback(null, results);
+            }
+        });
+
+        _each(keys, function (k) {
+            var task = _isArray(tasks[k]) ? tasks[k]: [tasks[k]];
+            var taskCallback = function (err) {
+                var args = Array.prototype.slice.call(arguments, 1);
+                if (args.length <= 1) {
+                    args = args[0];
+                }
+                if (err) {
+                    var safeResults = {};
+                    _each(_keys(results), function(rkey) {
+                        safeResults[rkey] = results[rkey];
+                    });
+                    safeResults[k] = args;
+                    callback(err, safeResults);
+                    // stop subsequent errors hitting callback multiple times
+                    callback = function () {};
+                }
+                else {
+                    results[k] = args;
+                    async.setImmediate(taskComplete);
+                }
+            };
+            var requires = task.slice(0, Math.abs(task.length - 1)) || [];
+            var ready = function () {
+                return _reduce(requires, function (a, x) {
+                    return (a && results.hasOwnProperty(x));
+                }, true) && !results.hasOwnProperty(k);
+            };
+            if (ready()) {
+                task[task.length - 1](taskCallback, results);
+            }
+            else {
+                var listener = function () {
+                    if (ready()) {
+                        removeListener(listener);
+                        task[task.length - 1](taskCallback, results);
+                    }
+                };
+                addListener(listener);
+            }
+        });
+    };
+
+    async.retry = function(times, task, callback) {
+        var DEFAULT_TIMES = 5;
+        var attempts = [];
+        // Use defaults if times not passed
+        if (typeof times === 'function') {
+            callback = task;
+            task = times;
+            times = DEFAULT_TIMES;
+        }
+        // Make sure times is a number
+        times = parseInt(times, 10) || DEFAULT_TIMES;
+        var wrappedTask = function(wrappedCallback, wrappedResults) {
+            var retryAttempt = function(task, finalAttempt) {
+                return function(seriesCallback) {
+                    task(function(err, result){
+                        seriesCallback(!err || finalAttempt, {err: err, result: result});
+                    }, wrappedResults);
+                };
+            };
+            while (times) {
+                attempts.push(retryAttempt(task, !(times-=1)));
+            }
+            async.series(attempts, function(done, data){
+                data = data[data.length - 1];
+                (wrappedCallback || callback)(data.err, data.result);
+            });
+        }
+        // If a callback is passed, run this as a controll flow
+        return callback ? wrappedTask() : wrappedTask
+    };
+
+    async.waterfall = function (tasks, callback) {
+        callback = callback || function () {};
+        if (!_isArray(tasks)) {
+          var err = new Error('First argument to waterfall must be an array of functions');
+          return callback(err);
+        }
+        if (!tasks.length) {
+            return callback();
+        }
+        var wrapIterator = function (iterator) {
+            return function (err) {
+                if (err) {
+                    callback.apply(null, arguments);
+                    callback = function () {};
+                }
+                else {
+                    var args = Array.prototype.slice.call(arguments, 1);
+                    var next = iterator.next();
+                    if (next) {
+                        args.push(wrapIterator(next));
+                    }
+                    else {
+                        args.push(callback);
+                    }
+                    async.setImmediate(function () {
+                        iterator.apply(null, args);
+                    });
+                }
+            };
+        };
+        wrapIterator(async.iterator(tasks))();
+    };
+
+    var _parallel = function(eachfn, tasks, callback) {
+        callback = callback || function () {};
+        if (_isArray(tasks)) {
+            eachfn.map(tasks, function (fn, callback) {
+                if (fn) {
+                    fn(function (err) {
+                        var args = Array.prototype.slice.call(arguments, 1);
+                        if (args.length <= 1) {
+                            args = args[0];
+                        }
+                        callback.call(null, err, args);
+                    });
+                }
+            }, callback);
+        }
+        else {
+            var results = {};
+            eachfn.each(_keys(tasks), function (k, callback) {
+                tasks[k](function (err) {
+                    var args = Array.prototype.slice.call(arguments, 1);
+                    if (args.length <= 1) {
+                        args = args[0];
+                    }
+                    results[k] = args;
+                    callback(err);
+                });
+            }, function (err) {
+                callback(err, results);
+            });
+        }
+    };
+
+    async.parallel = function (tasks, callback) {
+        _parallel({ map: async.map, each: async.each }, tasks, callback);
+    };
+
+    async.parallelLimit = function(tasks, limit, callback) {
+        _parallel({ map: _mapLimit(limit), each: _eachLimit(limit) }, tasks, callback);
+    };
+
+    async.series = function (tasks, callback) {
+        callback = callback || function () {};
+        if (_isArray(tasks)) {
+            async.mapSeries(tasks, function (fn, callback) {
+                if (fn) {
+                    fn(function (err) {
+                        var args = Array.prototype.slice.call(arguments, 1);
+                        if (args.length <= 1) {
+                            args = args[0];
+                        }
+                        callback.call(null, err, args);
+                    });
+                }
+            }, callback);
+        }
+        else {
+            var results = {};
+            async.eachSeries(_keys(tasks), function (k, callback) {
+                tasks[k](function (err) {
+                    var args = Array.prototype.slice.call(arguments, 1);
+                    if (args.length <= 1) {
+                        args = args[0];
+                    }
+                    results[k] = args;
+                    callback(err);
+                });
+            }, function (err) {
+                callback(err, results);
+            });
+        }
+    };
+
+    async.iterator = function (tasks) {
+        var makeCallback = function (index) {
+            var fn = function () {
+                if (tasks.length) {
+                    tasks[index].apply(null, arguments);
+                }
+                return fn.next();
+            };
+            fn.next = function () {
+                return (index < tasks.length - 1) ? makeCallback(index + 1): null;
+            };
+            return fn;
+        };
+        return makeCallback(0);
+    };
+
+    async.apply = function (fn) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        return function () {
+            return fn.apply(
+                null, args.concat(Array.prototype.slice.call(arguments))
+            );
+        };
+    };
+
+    var _concat = function (eachfn, arr, fn, callback) {
+        var r = [];
+        eachfn(arr, function (x, cb) {
+            fn(x, function (err, y) {
+                r = r.concat(y || []);
+                cb(err);
+            });
+        }, function (err) {
+            callback(err, r);
+        });
+    };
+    async.concat = doParallel(_concat);
+    async.concatSeries = doSeries(_concat);
+
+    async.whilst = function (test, iterator, callback) {
+        if (test()) {
+            iterator(function (err) {
+                if (err) {
+                    return callback(err);
+                }
+                async.whilst(test, iterator, callback);
+            });
+        }
+        else {
+            callback();
+        }
+    };
+
+    async.doWhilst = function (iterator, test, callback) {
+        iterator(function (err) {
+            if (err) {
+                return callback(err);
+            }
+            var args = Array.prototype.slice.call(arguments, 1);
+            if (test.apply(null, args)) {
+                async.doWhilst(iterator, test, callback);
+            }
+            else {
+                callback();
+            }
+        });
+    };
+
+    async.until = function (test, iterator, callback) {
+        if (!test()) {
+            iterator(function (err) {
+                if (err) {
+                    return callback(err);
+                }
+                async.until(test, iterator, callback);
+            });
+        }
+        else {
+            callback();
+        }
+    };
+
+    async.doUntil = function (iterator, test, callback) {
+        iterator(function (err) {
+            if (err) {
+                return callback(err);
+            }
+            var args = Array.prototype.slice.call(arguments, 1);
+            if (!test.apply(null, args)) {
+                async.doUntil(iterator, test, callback);
+            }
+            else {
+                callback();
+            }
+        });
+    };
+
+    async.queue = function (worker, concurrency) {
+        if (concurrency === undefined) {
+            concurrency = 1;
+        }
+        function _insert(q, data, pos, callback) {
+          if (!q.started){
+            q.started = true;
+          }
+          if (!_isArray(data)) {
+              data = [data];
+          }
+          if(data.length == 0) {
+             // call drain immediately if there are no tasks
+             return async.setImmediate(function() {
+                 if (q.drain) {
+                     q.drain();
+                 }
+             });
+          }
+          _each(data, function(task) {
+              var item = {
+                  data: task,
+                  callback: typeof callback === 'function' ? callback : null
+              };
+
+              if (pos) {
+                q.tasks.unshift(item);
+              } else {
+                q.tasks.push(item);
+              }
+
+              if (q.saturated && q.tasks.length === q.concurrency) {
+                  q.saturated();
+              }
+              async.setImmediate(q.process);
+          });
+        }
+
+        var workers = 0;
+        var q = {
+            tasks: [],
+            concurrency: concurrency,
+            saturated: null,
+            empty: null,
+            drain: null,
+            started: false,
+            paused: false,
+            push: function (data, callback) {
+              _insert(q, data, false, callback);
+            },
+            kill: function () {
+              q.drain = null;
+              q.tasks = [];
+            },
+            unshift: function (data, callback) {
+              _insert(q, data, true, callback);
+            },
+            process: function () {
+                if (!q.paused && workers < q.concurrency && q.tasks.length) {
+                    var task = q.tasks.shift();
+                    if (q.empty && q.tasks.length === 0) {
+                        q.empty();
+                    }
+                    workers += 1;
+                    var next = function () {
+                        workers -= 1;
+                        if (task.callback) {
+                            task.callback.apply(task, arguments);
+                        }
+                        if (q.drain && q.tasks.length + workers === 0) {
+                            q.drain();
+                        }
+                        q.process();
+                    };
+                    var cb = only_once(next);
+                    worker(task.data, cb);
+                }
+            },
+            length: function () {
+                return q.tasks.length;
+            },
+            running: function () {
+                return workers;
+            },
+            idle: function() {
+                return q.tasks.length + workers === 0;
+            },
+            pause: function () {
+                if (q.paused === true) { return; }
+                q.paused = true;
+                q.process();
+            },
+            resume: function () {
+                if (q.paused === false) { return; }
+                q.paused = false;
+                q.process();
+            }
+        };
+        return q;
+    };
+    
+    async.priorityQueue = function (worker, concurrency) {
+        
+        function _compareTasks(a, b){
+          return a.priority - b.priority;
+        };
+        
+        function _binarySearch(sequence, item, compare) {
+          var beg = -1,
+              end = sequence.length - 1;
+          while (beg < end) {
+            var mid = beg + ((end - beg + 1) >>> 1);
+            if (compare(item, sequence[mid]) >= 0) {
+              beg = mid;
+            } else {
+              end = mid - 1;
+            }
+          }
+          return beg;
+        }
+        
+        function _insert(q, data, priority, callback) {
+          if (!q.started){
+            q.started = true;
+          }
+          if (!_isArray(data)) {
+              data = [data];
+          }
+          if(data.length == 0) {
+             // call drain immediately if there are no tasks
+             return async.setImmediate(function() {
+                 if (q.drain) {
+                     q.drain();
+                 }
+             });
+          }
+          _each(data, function(task) {
+              var item = {
+                  data: task,
+                  priority: priority,
+                  callback: typeof callback === 'function' ? callback : null
+              };
+              
+              q.tasks.splice(_binarySearch(q.tasks, item, _compareTasks) + 1, 0, item);
+
+              if (q.saturated && q.tasks.length === q.concurrency) {
+                  q.saturated();
+              }
+              async.setImmediate(q.process);
+          });
+        }
+        
+        // Start with a normal queue
+        var q = async.queue(worker, concurrency);
+        
+        // Override push to accept second parameter representing priority
+        q.push = function (data, priority, callback) {
+          _insert(q, data, priority, callback);
+        };
+        
+        // Remove unshift function
+        delete q.unshift;
+
+        return q;
+    };
+
+    async.cargo = function (worker, payload) {
+        var working     = false,
+            tasks       = [];
+
+        var cargo = {
+            tasks: tasks,
+            payload: payload,
+            saturated: null,
+            empty: null,
+            drain: null,
+            drained: true,
+            push: function (data, callback) {
+                if (!_isArray(data)) {
+                    data = [data];
+                }
+                _each(data, function(task) {
+                    tasks.push({
+                        data: task,
+                        callback: typeof callback === 'function' ? callback : null
+                    });
+                    cargo.drained = false;
+                    if (cargo.saturated && tasks.length === payload) {
+                        cargo.saturated();
+                    }
+                });
+                async.setImmediate(cargo.process);
+            },
+            process: function process() {
+                if (working) return;
+                if (tasks.length === 0) {
+                    if(cargo.drain && !cargo.drained) cargo.drain();
+                    cargo.drained = true;
+                    return;
+                }
+
+                var ts = typeof payload === 'number'
+                            ? tasks.splice(0, payload)
+                            : tasks.splice(0, tasks.length);
+
+                var ds = _map(ts, function (task) {
+                    return task.data;
+                });
+
+                if(cargo.empty) cargo.empty();
+                working = true;
+                worker(ds, function () {
+                    working = false;
+
+                    var args = arguments;
+                    _each(ts, function (data) {
+                        if (data.callback) {
+                            data.callback.apply(null, args);
+                        }
+                    });
+
+                    process();
+                });
+            },
+            length: function () {
+                return tasks.length;
+            },
+            running: function () {
+                return working;
+            }
+        };
+        return cargo;
+    };
+
+    var _console_fn = function (name) {
+        return function (fn) {
+            var args = Array.prototype.slice.call(arguments, 1);
+            fn.apply(null, args.concat([function (err) {
+                var args = Array.prototype.slice.call(arguments, 1);
+                if (typeof console !== 'undefined') {
+                    if (err) {
+                        if (console.error) {
+                            console.error(err);
+                        }
+                    }
+                    else if (console[name]) {
+                        _each(args, function (x) {
+                            console[name](x);
+                        });
+                    }
+                }
+            }]));
+        };
+    };
+    async.log = _console_fn('log');
+    async.dir = _console_fn('dir');
+    /*async.info = _console_fn('info');
+    async.warn = _console_fn('warn');
+    async.error = _console_fn('error');*/
+
+    async.memoize = function (fn, hasher) {
+        var memo = {};
+        var queues = {};
+        hasher = hasher || function (x) {
+            return x;
+        };
+        var memoized = function () {
+            var args = Array.prototype.slice.call(arguments);
+            var callback = args.pop();
+            var key = hasher.apply(null, args);
+            if (key in memo) {
+                async.nextTick(function () {
+                    callback.apply(null, memo[key]);
+                });
+            }
+            else if (key in queues) {
+                queues[key].push(callback);
+            }
+            else {
+                queues[key] = [callback];
+                fn.apply(null, args.concat([function () {
+                    memo[key] = arguments;
+                    var q = queues[key];
+                    delete queues[key];
+                    for (var i = 0, l = q.length; i < l; i++) {
+                      q[i].apply(null, arguments);
+                    }
+                }]));
+            }
+        };
+        memoized.memo = memo;
+        memoized.unmemoized = fn;
+        return memoized;
+    };
+
+    async.unmemoize = function (fn) {
+      return function () {
+        return (fn.unmemoized || fn).apply(null, arguments);
+      };
+    };
+
+    async.times = function (count, iterator, callback) {
+        var counter = [];
+        for (var i = 0; i < count; i++) {
+            counter.push(i);
+        }
+        return async.map(counter, iterator, callback);
+    };
+
+    async.timesSeries = function (count, iterator, callback) {
+        var counter = [];
+        for (var i = 0; i < count; i++) {
+            counter.push(i);
+        }
+        return async.mapSeries(counter, iterator, callback);
+    };
+
+    async.seq = function (/* functions... */) {
+        var fns = arguments;
+        return function () {
+            var that = this;
+            var args = Array.prototype.slice.call(arguments);
+            var callback = args.pop();
+            async.reduce(fns, args, function (newargs, fn, cb) {
+                fn.apply(that, newargs.concat([function () {
+                    var err = arguments[0];
+                    var nextargs = Array.prototype.slice.call(arguments, 1);
+                    cb(err, nextargs);
+                }]))
+            },
+            function (err, results) {
+                callback.apply(that, [err].concat(results));
+            });
+        };
+    };
+
+    async.compose = function (/* functions... */) {
+      return async.seq.apply(null, Array.prototype.reverse.call(arguments));
+    };
+
+    var _applyEach = function (eachfn, fns /*args...*/) {
+        var go = function () {
+            var that = this;
+            var args = Array.prototype.slice.call(arguments);
+            var callback = args.pop();
+            return eachfn(fns, function (fn, cb) {
+                fn.apply(that, args.concat([cb]));
+            },
+            callback);
+        };
+        if (arguments.length > 2) {
+            var args = Array.prototype.slice.call(arguments, 2);
+            return go.apply(this, args);
+        }
+        else {
+            return go;
+        }
+    };
+    async.applyEach = doParallel(_applyEach);
+    async.applyEachSeries = doSeries(_applyEach);
+
+    async.forever = function (fn, callback) {
+        function next(err) {
+            if (err) {
+                if (callback) {
+                    return callback(err);
+                }
+                throw err;
+            }
+            fn(next);
+        }
+        next();
+    };
+
+    // Node.js
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = async;
+    }
+    // AMD / RequireJS
+    else if (typeof define !== 'undefined' && define.amd) {
+        define([], function () {
+            return async;
+        });
+    }
+    // included directly via <script> tag
+    else {
+        root.async = async;
+    }
+
+}());
+
+}).call(this,require('_process'))
+},{"_process":107}],66:[function(require,module,exports){
 // i18next, v1.7.7
 // Copyright (c)2014 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
@@ -19517,7 +21323,7 @@ module.exports = XMPP;
     i18n.options = o;
 
 })();
-},{"jquery":"jquery"}],63:[function(require,module,exports){
+},{"jquery":"jquery"}],67:[function(require,module,exports){
 // Top level file is just a mixin of submodules & constants
 'use strict';
 
@@ -19532,7 +21338,7 @@ var pako = {};
 assign(pako, deflate, inflate, constants);
 
 module.exports = pako;
-},{"./lib/deflate":64,"./lib/inflate":65,"./lib/utils/common":66,"./lib/zlib/constants":69}],64:[function(require,module,exports){
+},{"./lib/deflate":68,"./lib/inflate":69,"./lib/utils/common":70,"./lib/zlib/constants":73}],68:[function(require,module,exports){
 'use strict';
 
 
@@ -19897,7 +21703,7 @@ exports.Deflate = Deflate;
 exports.deflate = deflate;
 exports.deflateRaw = deflateRaw;
 exports.gzip = gzip;
-},{"./utils/common":66,"./utils/strings":67,"./zlib/deflate.js":71,"./zlib/messages":76,"./zlib/zstream":78}],65:[function(require,module,exports){
+},{"./utils/common":70,"./utils/strings":71,"./zlib/deflate.js":75,"./zlib/messages":80,"./zlib/zstream":82}],69:[function(require,module,exports){
 'use strict';
 
 
@@ -20266,7 +22072,7 @@ exports.inflate = inflate;
 exports.inflateRaw = inflateRaw;
 exports.ungzip  = inflate;
 
-},{"./utils/common":66,"./utils/strings":67,"./zlib/constants":69,"./zlib/gzheader":72,"./zlib/inflate.js":74,"./zlib/messages":76,"./zlib/zstream":78}],66:[function(require,module,exports){
+},{"./utils/common":70,"./utils/strings":71,"./zlib/constants":73,"./zlib/gzheader":76,"./zlib/inflate.js":78,"./zlib/messages":80,"./zlib/zstream":82}],70:[function(require,module,exports){
 'use strict';
 
 
@@ -20369,7 +22175,7 @@ exports.setTyped = function (on) {
 };
 
 exports.setTyped(TYPED_OK);
-},{}],67:[function(require,module,exports){
+},{}],71:[function(require,module,exports){
 // String encode/decode helpers
 'use strict';
 
@@ -20556,7 +22362,7 @@ exports.utf8border = function(buf, max) {
   return (pos + _utf8len[buf[pos]] > max) ? pos : max;
 };
 
-},{"./common":66}],68:[function(require,module,exports){
+},{"./common":70}],72:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -20589,7 +22395,7 @@ function adler32(adler, buf, len, pos) {
 
 
 module.exports = adler32;
-},{}],69:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 module.exports = {
 
   /* Allowed flush values; see deflate() and inflate() below for details */
@@ -20637,7 +22443,7 @@ module.exports = {
   Z_DEFLATED:               8
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
-},{}],70:[function(require,module,exports){
+},{}],74:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -20679,7 +22485,7 @@ function crc32(crc, buf, len, pos) {
 
 
 module.exports = crc32;
-},{}],71:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 'use strict';
 
 var utils   = require('../utils/common');
@@ -22445,7 +24251,7 @@ exports.deflatePending = deflatePending;
 exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
-},{"../utils/common":66,"./adler32":68,"./crc32":70,"./messages":76,"./trees":77}],72:[function(require,module,exports){
+},{"../utils/common":70,"./adler32":72,"./crc32":74,"./messages":80,"./trees":81}],76:[function(require,module,exports){
 'use strict';
 
 
@@ -22486,7 +24292,7 @@ function GZheader() {
 }
 
 module.exports = GZheader;
-},{}],73:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 'use strict';
 
 // See state defs from inflate.js
@@ -22813,7 +24619,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],74:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 'use strict';
 
 
@@ -24317,7 +26123,7 @@ exports.inflateSync = inflateSync;
 exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
-},{"../utils/common":66,"./adler32":68,"./crc32":70,"./inffast":73,"./inftrees":75}],75:[function(require,module,exports){
+},{"../utils/common":70,"./adler32":72,"./crc32":74,"./inffast":77,"./inftrees":79}],79:[function(require,module,exports){
 'use strict';
 
 
@@ -24644,7 +26450,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":66}],76:[function(require,module,exports){
+},{"../utils/common":70}],80:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -24658,7 +26464,7 @@ module.exports = {
   '-5':   'buffer error',        /* Z_BUF_ERROR     (-5) */
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
-},{}],77:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 'use strict';
 
 
@@ -25858,7 +27664,7 @@ exports._tr_stored_block = _tr_stored_block;
 exports._tr_flush_block  = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
-},{"../utils/common":66}],78:[function(require,module,exports){
+},{"../utils/common":70}],82:[function(require,module,exports){
 'use strict';
 
 
@@ -25888,7 +27694,170 @@ function ZStream() {
 }
 
 module.exports = ZStream;
-},{}],79:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
+module.exports = require('./lib/retry');
+},{"./lib/retry":84}],84:[function(require,module,exports){
+var RetryOperation = require('./retry_operation');
+
+exports.operation = function(options) {
+  var timeouts = exports.timeouts(options);
+  return new RetryOperation(timeouts);
+};
+
+exports.timeouts = function(options) {
+  if (options instanceof Array) {
+    return [].concat(options);
+  }
+
+  var opts = {
+    retries: 10,
+    factor: 2,
+    minTimeout: 1 * 1000,
+    maxTimeout: Infinity,
+    randomize: false
+  };
+  for (var key in options) {
+    opts[key] = options[key];
+  }
+
+  if (opts.minTimeout > opts.maxTimeout) {
+    throw new Error('minTimeout is greater than maxTimeout');
+  }
+
+  var timeouts = [];
+  for (var i = 0; i < opts.retries; i++) {
+    timeouts.push(this._createTimeout(i, opts));
+  }
+
+  // sort the array numerically ascending
+  timeouts.sort(function(a,b) {
+    return a - b;
+  });
+
+  return timeouts;
+};
+
+exports._createTimeout = function(attempt, opts) {
+  var random = (opts.randomize)
+    ? (Math.random() + 1)
+    : 1;
+
+  var timeout = Math.round(random * opts.minTimeout * Math.pow(opts.factor, attempt));
+  timeout = Math.min(timeout, opts.maxTimeout);
+
+  return timeout;
+};
+},{"./retry_operation":85}],85:[function(require,module,exports){
+function RetryOperation(timeouts) {
+  this._timeouts = timeouts;
+  this._fn = null;
+  this._errors = [];
+  this._attempts = 1;
+  this._operationTimeout = null;
+  this._operationTimeoutCb = null;
+  this._timeout = null;
+}
+module.exports = RetryOperation;
+
+RetryOperation.prototype.retry = function(err) {
+  if (this._timeout) {
+    clearTimeout(this._timeout);
+  }
+
+  if (!err) {
+    return false;
+  }
+
+  this._errors.push(err);
+
+  var timeout = this._timeouts.shift();
+  if (timeout === undefined) {
+    return false;
+  }
+
+  this._attempts++;
+
+  var self = this;
+  setTimeout(function() {
+    self._fn(self._attempts);
+
+    if (self._operationTimeoutCb) {
+      self._timeout = setTimeout(function() {
+        self._operationTimeoutCb(self._attempts);
+      }, self._operationTimeout);
+    }
+  }, timeout);
+
+  return true;
+};
+
+RetryOperation.prototype.attempt = function(fn, timeoutOps) {
+  this._fn = fn;
+
+  if (timeoutOps) {
+    if (timeoutOps.timeout) {
+      this._operationTimeout = timeoutOps.timeout;
+    }
+    if (timeoutOps.cb) {
+      this._operationTimeoutCb = timeoutOps.cb;
+    }
+  }
+
+  this._fn(this._attempts);
+
+  var self = this;
+  if (this._operationTimeoutCb) {
+    this._timeout = setTimeout(function() {
+      self._operationTimeoutCb();
+    }, self._operationTimeout);
+  }
+};
+
+RetryOperation.prototype.try = function(fn) {
+  console.log('Using RetryOperation.try() is deprecated');
+  this.attempt(fn);
+};
+
+RetryOperation.prototype.start = function(fn) {
+  console.log('Using RetryOperation.start() is deprecated');
+  this.attempt(fn);
+};
+
+RetryOperation.prototype.start = RetryOperation.prototype.try;
+
+RetryOperation.prototype.errors = function() {
+  return this._errors;
+};
+
+RetryOperation.prototype.attempts = function() {
+  return this._attempts;
+};
+
+RetryOperation.prototype.mainError = function() {
+  if (this._errors.length === 0) {
+    return null;
+  }
+
+  var counts = {};
+  var mainError = null;
+  var mainErrorCount = 0;
+
+  for (var i = 0; i < this._errors.length; i++) {
+    var error = this._errors[i];
+    var message = error.message;
+    var count = (counts[message] || 0) + 1;
+
+    counts[message] = count;
+
+    if (count >= mainErrorCount) {
+      mainError = error;
+      mainErrorCount = count;
+    }
+  }
+
+  return mainError;
+};
+},{}],86:[function(require,module,exports){
 module.exports = function arrayEquals(array) {
     // if the other array is a falsy value, return
     if (!array)
@@ -25914,27 +27883,32 @@ module.exports = function arrayEquals(array) {
 }
 
 
-},{}],80:[function(require,module,exports){
+},{}],87:[function(require,module,exports){
 exports.Interop = require('./interop');
 
-},{"./interop":81}],81:[function(require,module,exports){
+},{"./interop":88}],88:[function(require,module,exports){
+"use strict";
+
 var transform = require('./transform');
 var arrayEquals = require('./array-equals');
 
-function Interop() { }
+function Interop() {
+
+    /**
+     * This map holds the most recent Unified Plan offer/answer SDP that was
+     * converted to Plan B, with the SDP type ('offer' or 'answer') as keys and
+     * the SDP string as values.
+     *
+     * @type {{}}
+     */
+    this.cache = {};
+}
+
 module.exports = Interop;
 
-/**
- * This map holds the most recent Plan A offer/answer SDP that was converted
- * to Plan B, with the SDP type ('offer' or 'answer') as keys and the SDP
- * string as values.
- *
- * @type {{}}
- */
-var cache = {};
 
 /**
- * This method transforms a Plan A SDP to an equivalent Plan B SDP. A
+ * This method transforms a Unified Plan SDP to an equivalent Plan B SDP. A
  * PeerConnection wrapper transforms the SDP to Plan B before passing it to the
  * application.
  *
@@ -25961,110 +27935,122 @@ Interop.prototype.toPlanB = function(desc) {
         return desc;
     }
 
-    // Try some heuristics to "make sure" this is a Plan A SDP. Plan B SDP has
-    // a video, an audio and a data "channel" at most.
+    // Try some heuristics to "make sure" this is a Unified Plan SDP. Plan B
+    // SDP has a video, an audio and a data "channel" at most.
     if (session.media.length <= 3 && session.media.every(function(m) {
             return ['video', 'audio', 'data'].indexOf(m.mid) !== -1;
         })) {
-        console.warn('This description does not look like Plan A.');
+        console.warn('This description does not look like Unified Plan.');
         return desc;
     }
 
     //#endregion
 
-    // Plan A SDP is our "precious". Cache it for later use in the Plan B ->
-    // Plan A transformation.
-    cache[desc.type] = desc.sdp;
+    // Unified Plan SDP is our "precious". Cache it for later use in the Plan B
+    // -> Unified Plan transformation.
+    this.cache[desc.type] = desc.sdp;
 
-    //#region Convert from Plan A to Plan B.
+    //#region Convert from Unified Plan to Plan B.
 
     // We rebuild the session.media array.
     var media = session.media;
     session.media = [];
 
     // Associative array that maps channel types to channel objects for fast
-    // access to channel objects by their type, e.g. channels['audio']->channel
+    // access to channel objects by their type, e.g. type2bl['audio']->channel
     // obj.
-    var channels = {};
+    var type2bl = {};
 
     // Used to build the group:BUNDLE value after the channels construction
     // loop.
     var types = [];
 
-    // Implode the Plan A m-lines/tracks into Plan B "channels".
-    media.forEach(function(mLine) {
+    // Implode the Unified Plan m-lines/tracks into Plan B channels.
+    media.forEach(function(unifiedLine) {
 
         // rtcp-mux is required in the Plan B SDP.
-        if (typeof mLine.rtcpMux !== 'string' ||
-            mLine.rtcpMux !== 'rtcp-mux') {
+        if ((typeof unifiedLine.rtcpMux !== 'string' ||
+            unifiedLine.rtcpMux !== 'rtcp-mux') &&
+            unifiedLine.direction !== 'inactive') {
             throw new Error('Cannot convert to Plan B because m-lines ' +
                 'without the rtcp-mux attribute were found.');
         }
 
-        // If we don't have a channel for this mLine.type, then use this mLine
+        if (unifiedLine.type === 'application') {
+            session.media.push(unifiedLine);
+            types.push(unifiedLine.mid);
+            return;
+        }
+
+        // If we don't have a channel for this unifiedLine.type, then use this unifiedLine
         // as the channel basis.
-        if (typeof channels[mLine.type] === 'undefined') {
-            channels[mLine.type] = mLine;
+        if (typeof type2bl[unifiedLine.type] === 'undefined') {
+            type2bl[unifiedLine.type] = unifiedLine;
         }
 
         // Add sources to the channel and handle a=msid.
-        if (typeof mLine.sources === 'object') {
-            Object.keys(mLine.sources).forEach(function(ssrc) {
+        if (typeof unifiedLine.sources === 'object') {
+            Object.keys(unifiedLine.sources).forEach(function(ssrc) {
+                if (typeof type2bl[unifiedLine.type].sources !== 'object')
+                    type2bl[unifiedLine.type].sources = {};
+
                 // Assign the sources to the channel.
-                channels[mLine.type].sources[ssrc] = mLine.sources[ssrc];
+                type2bl[unifiedLine.type].sources[ssrc] = unifiedLine.sources[ssrc];
 
-                // In Plan B the msid is an SSRC attribute. Also, we don't care
-                // about the obsolete label and mslabel attributes.
-                channels[mLine.type].sources[ssrc].msid = mLine.msid;
-
+                if (typeof unifiedLine.msid !== 'undefined') {
+                    // In Plan B the msid is an SSRC attribute. Also, we don't
+                    // care about the obsolete label and mslabel attributes.
+                    //
+                    // Note that it is not guaranteed that the unifiedLine will have
+                    // an msid. recvonly channels in particular don't have one.
+                    type2bl[unifiedLine.type].sources[ssrc].msid = unifiedLine.msid;
+                }
                 // NOTE ssrcs in ssrc groups will share msids, as
                 // draft-uberti-rtcweb-plan-00 mandates.
             });
         }
 
         // Add ssrc groups to the channel.
-        if (typeof mLine.ssrcGroups !== 'undefined' &&
-                Array.isArray(mLine.ssrcGroups)) {
+        if (typeof unifiedLine.ssrcGroups !== 'undefined' &&
+                Array.isArray(unifiedLine.ssrcGroups)) {
 
             // Create the ssrcGroups array, if it's not defined.
-            if (typeof channel.ssrcGroups === 'undefined' ||
-                    !Array.isArray(channel.ssrcGroups)) {
-                channel.ssrcGroups = [];
+            if (typeof type2bl[unifiedLine.type].ssrcGroups === 'undefined' ||
+                    !Array.isArray(type2bl[unifiedLine.type].ssrcGroups)) {
+                type2bl[unifiedLine.type].ssrcGroups = [];
             }
 
-            channel.ssrcGroups = channel.ssrcGroups.concat(mLine.ssrcGroups);
+            type2bl[unifiedLine.type].ssrcGroups = type2bl[unifiedLine.type].ssrcGroups.concat(unifiedLine.ssrcGroups);
         }
 
-        if (channels[mLine.type] === mLine) {
+        if (type2bl[unifiedLine.type] === unifiedLine) {
             // Copy ICE related stuff from the principal media line.
-            mLine.candidates = media[0].candidates;
-            mLine.iceUfrag = media[0].iceUfrag;
-            mLine.icePwd = media[0].icePwd;
-            mLine.fingerprint = media[0].fingerprint;
+            unifiedLine.candidates = media[0].candidates;
+            unifiedLine.iceUfrag = media[0].iceUfrag;
+            unifiedLine.icePwd = media[0].icePwd;
+            unifiedLine.fingerprint = media[0].fingerprint;
 
             // Plan B mids are in ['audio', 'video', 'data']
-            mLine.mid = mLine.type;
+            unifiedLine.mid = unifiedLine.type;
 
             // Plan B doesn't support/need the bundle-only attribute.
-            delete mLine.bundleOnly;
+            delete unifiedLine.bundleOnly;
 
             // In Plan B the msid is an SSRC attribute.
-            delete mLine.msid;
+            delete unifiedLine.msid;
 
             // Used to build the group:BUNDLE value after this loop.
-            types.push(mLine.type);
+            types.push(unifiedLine.type);
 
             // Add the channel to the new media array.
-            session.media.push(mLine);
+            session.media.push(unifiedLine);
         }
     });
 
     // We regenerate the BUNDLE group with the new mids.
-    session.groups.every(function(group) {
+    session.groups.some(function(group) {
         if (group.type === 'BUNDLE') {
             group.mids = types.join(' ');
-            return false;
-        } else {
             return true;
         }
     });
@@ -26086,13 +28072,14 @@ Interop.prototype.toPlanB = function(desc) {
 };
 
 /**
- * This method transforms a Plan B SDP to an equivalent Plan A SDP. A
- * PeerConnection wrapper transforms the SDP to Plan A before passing it to FF.
+ * This method transforms a Plan B SDP to an equivalent Unified Plan SDP. A
+ * PeerConnection wrapper transforms the SDP to Unified Plan before passing it
+ * to FF.
  *
  * @param desc
  * @returns {*}
  */
-Interop.prototype.toPlanA = function(desc) {
+Interop.prototype.toUnifiedPlan = function(desc) {
 
     //#region Preliminary input validation.
 
@@ -26120,7 +28107,7 @@ Interop.prototype.toPlanA = function(desc) {
         return desc;
     }
 
-    // Make sure this Plan B SDP can be converted to a Plan A SDP.
+    // Make sure this Plan B SDP can be converted to a Unified Plan SDP.
     var mids = [];
     session.media.forEach(function(m) {
         mids.push(m.mid);
@@ -26136,73 +28123,79 @@ Interop.prototype.toPlanA = function(desc) {
     }
 
     if (!hasBundle) {
-        throw new Error("Cannot convert to Plan A because m-lines that are " +
-            "not bundled were found.");
+        throw new Error("Cannot convert to Unified Plan because m-lines that" +
+            " are not bundled were found.");
     }
 
     //#endregion
 
 
-    //#region Convert from Plan B to Plan A.
+    //#region Convert from Plan B to Unified Plan.
 
     // Unfortunately, a Plan B offer/answer doesn't have enough information to
-    // rebuild an equivalent Plan A offer/answer.
+    // rebuild an equivalent Unified Plan offer/answer.
     //
-    // For example, if this is a local answer (in Plan A style) that we convert
-    // to Plan B prior to handing it over to the application (the
+    // For example, if this is a local answer (in Unified Plan style) that we
+    // convert to Plan B prior to handing it over to the application (the
     // PeerConnection wrapper called us, for instance, after a successful
     // createAnswer), we want to remember the m-line at which we've seen the
     // (local) SSRC. That's because when the application wants to do call the
     // SLD method, forcing us to do the inverse transformation (from Plan B to
-    // Plan A), we need to know to which m-line to assign the (local) SSRC. We
-    // also need to know all the other m-lines that the original answer had and
-    // include them in the transformed answer as well.
+    // Unified Plan), we need to know to which m-line to assign the (local)
+    // SSRC. We also need to know all the other m-lines that the original
+    // answer had and include them in the transformed answer as well.
     //
     // Another example is if this is a remote offer that we convert to Plan B
     // prior to giving it to the application, we want to remember the mid at
     // which we've seen the (remote) SSRC.
     //
-    // In the iteration that follows, we use the cached Plan A (if it exists)
-    // to assign mids to ssrcs.
+    // In the iteration that follows, we use the cached Unified Plan (if it
+    // exists) to assign mids to ssrcs.
 
     var cached;
-    if (typeof cache[desc.type] !== 'undefined') {
-        cached = transform.parse(cache[desc.type]);
+    if (typeof this.cache[desc.type] !== 'undefined') {
+        cached = transform.parse(this.cache[desc.type]);
     }
 
     // A helper map that sends mids to m-line objects. We use it later to
-    // rebuild the Plan A style session.media array.
-    var media = {};
-    session.media.forEach(function(channel) {
-        if (typeof channel.rtcpMux !== 'string' ||
-            channel.rtcpMux !== 'rtcp-mux') {
-            throw new Error("Cannot convert to Plan A because m-lines " +
+    // rebuild the Unified Plan style session.media array.
+    var mid2ul = {};
+    session.media.forEach(function(bLine) {
+        if ((typeof bLine.rtcpMux !== 'string' ||
+            bLine.rtcpMux !== 'rtcp-mux') &&
+            bLine.direction !== 'inactive') {
+            throw new Error("Cannot convert to Unified Plan because m-lines " +
                 "without the rtcp-mux attribute were found.");
+        }
+
+        if (bLine.type === 'application') {
+            mid2ul[bLine.mid] = bLine;
+            return;
         }
 
         // With rtcp-mux and bundle all the channels should have the same ICE
         // stuff.
-        var sources = channel.sources;
-        var ssrcGroups = channel.ssrcGroups;
-        var candidates = channel.candidates;
-        var iceUfrag = channel.iceUfrag;
-        var icePwd = channel.icePwd;
-        var fingerprint = channel.fingerprint;
-        var port = channel.port;
+        var sources = bLine.sources;
+        var ssrcGroups = bLine.ssrcGroups;
+        var candidates = bLine.candidates;
+        var iceUfrag = bLine.iceUfrag;
+        var icePwd = bLine.icePwd;
+        var fingerprint = bLine.fingerprint;
+        var port = bLine.port;
 
-        // We'll use the "channel" object as a prototype for each new "mLine"
+        // We'll use the "bLine" object as a prototype for each new "mLine"
         // that we create, but first we need to clean it up a bit.
-        delete channel.sources;
-        delete channel.ssrcGroups;
-        delete channel.candidates;
-        delete channel.iceUfrag;
-        delete channel.icePwd;
-        delete channel.fingerprint;
-        delete channel.port;
-        delete channel.mid;
+        delete bLine.sources;
+        delete bLine.ssrcGroups;
+        delete bLine.candidates;
+        delete bLine.iceUfrag;
+        delete bLine.icePwd;
+        delete bLine.fingerprint;
+        delete bLine.port;
+        delete bLine.mid;
 
         // inverted ssrc group map
-        var invertedGroups = {};
+        var ssrc2group = {};
         if (typeof ssrcGroups !== 'undefined' && Array.isArray(ssrcGroups)) {
             ssrcGroups.forEach(function (ssrcGroup) {
 
@@ -26215,105 +28208,114 @@ Interop.prototype.toPlanA = function(desc) {
                 if (typeof ssrcGroup.ssrcs !== 'undefined' &&
                     Array.isArray(ssrcGroup.ssrcs)) {
                     ssrcGroup.ssrcs.forEach(function (ssrc) {
-                        if (typeof invertedGroups[ssrc] === 'undefined') {
-                            invertedGroups[ssrc] = [];
+                        if (typeof ssrc2group[ssrc] === 'undefined') {
+                            ssrc2group[ssrc] = [];
                         }
 
-                        invertedGroups[ssrc].push(ssrcGroup);
+                        ssrc2group[ssrc].push(ssrcGroup);
                     });
                 }
             });
         }
 
         // ssrc to m-line index.
-        var mLines = {};
+        var ssrc2ml = {};
 
         if (typeof sources === 'object') {
 
             // Explode the Plan B channel sources with one m-line per source.
             Object.keys(sources).forEach(function(ssrc) {
 
-                var mLine;
-                if (typeof invertedGroups[ssrc] !== 'undefined' &&
-                    Array.isArray(invertedGroups[ssrc])) {
-                    invertedGroups[ssrc].every(function (ssrcGroup) {
+                // The (unified) m-line for this SSRC. We either create it from
+                // scratch or, if it's a grouped SSRC, we re-use a related
+                // mline. In other words, if the source is grouped with another
+                // source, put the two together in the same m-line.
+                var unifiedLine;
+                if (typeof ssrc2group[ssrc] !== 'undefined' &&
+                    Array.isArray(ssrc2group[ssrc])) {
+                    ssrc2group[ssrc].some(function (ssrcGroup) {
                         // ssrcGroup.ssrcs *is* an Array, no need to check
                         // again here.
-                        return ssrcGroup.ssrcs.every(function (related) {
-                            if (typeof mLines[related] === 'object') {
-                                mLine = mLines[related];
-                                return false;
-                            } else {
+                        return ssrcGroup.ssrcs.some(function (related) {
+                            if (typeof ssrc2ml[related] === 'object') {
+                                unifiedLine = ssrc2ml[related];
                                 return true;
                             }
                         });
                     });
                 }
 
-                if (typeof mLine === 'object') {
+                if (typeof unifiedLine === 'object') {
                     // the m-line already exists. Just add the source.
-                    mLine.sources[ssrc] = sources[ssrc];
+                    unifiedLine.sources[ssrc] = sources[ssrc];
                     delete sources[ssrc].msid;
                 } else {
-                // Use the "channel" as a prototype for the "mLine".
-                mLine = Object.create(channel);
-                mLines[ssrc] = mLine;
+                    // Use the "bLine" as a prototype for the "unifiedLine".
+                    unifiedLine = Object.create(bLine);
+                    ssrc2ml[ssrc] = unifiedLine;
 
-                // Assign the msid of the source to the m-line.
-                mLine.msid = sources[ssrc].msid;
-                delete sources[ssrc].msid;
-
-                // We assign one SSRC per media line.
-                mLine.sources = {};
-                mLine.sources[ssrc] = sources[ssrc];
-                mLine.ssrcGroups = invertedGroups[ssrc];
-
-                // Use the cached Plan A SDP (if it exists) to assign SSRCs to
-                // mids.
-                if (typeof cached !== 'undefined' &&
-                    typeof cached.media !== 'undefined' &&
-                    Array.isArray(cached.media)) {
-
-                    cached.media.forEach(function(m) {
-                        if (typeof m.sources === 'object') {
-                            Object.keys(m.sources).forEach(function(s) {
-                                if (s === ssrc) {
-                                    mLine.mid = m.mid;
-                                }
-                            });
-                        }
-                    });
-                }
-
-                if (typeof mLine.mid === 'undefined') {
-
-                    // If this is an SSRC that we see for the first time assign
-                    // it a new mid. This is typically the case when this
-                    // method is called to transform a remote description for
-                    // the first time or when there is a new SSRC in the remote
-                    // description because a new peer has joined the
-                    // conference. Local SSRCs should have already been added
-                    // to the map in the toPlanB method.
-                    //
-                    // Because FF generates answers in Plan A style, we MUST
-                    // already have a cached answer with all the local SSRCs
-                    // mapped to some mLine/mid.
-
-                    if (desc.type === 'answer') {
-                        throw new Error("An unmapped SSRC was found.");
+                    if (typeof sources[ssrc].msid !== 'undefined') {
+                        // Assign the msid of the source to the m-line. Note
+                        // that it is not guaranteed that the source will have
+                        // msid. In particular "recvonly" sources don't have an
+                        // msid. Note that "recvonly" is a term only defined
+                        // for m-lines.
+                        unifiedLine.msid = sources[ssrc].msid;
+                        delete sources[ssrc].msid;
                     }
 
-                    mLine.mid = [channel.type, '-', ssrc].join('');
-                }
+                    // We assign one SSRC per media line.
+                    unifiedLine.sources = {};
+                    unifiedLine.sources[ssrc] = sources[ssrc];
+                    unifiedLine.ssrcGroups = ssrc2group[ssrc];
 
-                // Include the candidates in the 1st media line.
-                mLine.candidates = candidates;
-                mLine.iceUfrag = iceUfrag;
-                mLine.icePwd = icePwd;
-                mLine.fingerprint = fingerprint;
-                mLine.port = port;
+                    // Use the cached Unified Plan SDP (if it exists) to assign
+                    // SSRCs to mids.
+                    if (typeof cached !== 'undefined' &&
+                        typeof cached.media !== 'undefined' &&
+                        Array.isArray(cached.media)) {
 
-                media[mLine.mid] = mLine;
+                        cached.media.forEach(function (m) {
+                            if (typeof m.sources === 'object') {
+                                Object.keys(m.sources).forEach(function (s) {
+                                    if (s === ssrc) {
+                                        unifiedLine.mid = m.mid;
+                                    }
+                                });
+                            }
+                        });
+                    }
+
+                    if (typeof unifiedLine.mid === 'undefined') {
+
+                        // If this is an SSRC that we see for the first time
+                        // assign it a new mid. This is typically the case when
+                        // this method is called to transform a remote
+                        // description for the first time or when there is a
+                        // new SSRC in the remote description because a new
+                        // peer has joined the conference. Local SSRCs should
+                        // have already been added to the map in the toPlanB
+                        // method.
+                        //
+                        // Because FF generates answers in Unified Plan style,
+                        // we MUST already have a cached answer with all the
+                        // local SSRCs mapped to some m-line/mid.
+
+                        if (desc.type === 'answer') {
+                            throw new Error("An unmapped SSRC was found.");
+                        }
+
+                        unifiedLine.mid = [bLine.type, '-', ssrc].join('');
+                    }
+
+                    // Include the candidates in the 1st media line.
+                    unifiedLine.candidates = candidates;
+                    unifiedLine.iceUfrag = iceUfrag;
+                    unifiedLine.icePwd = icePwd;
+                    unifiedLine.fingerprint = fingerprint;
+                    unifiedLine.port = port;
+
+                    mid2ul[unifiedLine.mid] = unifiedLine;
                 }
             });
         }
@@ -26327,54 +28329,57 @@ Interop.prototype.toPlanA = function(desc) {
     if (desc.type === 'answer') {
 
         // The media lines in the answer must match the media lines in the
-        // offer. The order is important too. Here we use the cached offer to
-        // find the m-lines that are missing (from the converted answer), and
-        // use the cached answer to complete the converted answer.
+        // offer. The order is important too. Here we assume that Firefox is the
+        // answerer, so we merely have to use the reconstructed (unified) answer
+        // to update the cached (unified) answer accordingly.
+        //
+        // In the general case, one would have to use the cached (unified) offer
+        // to find the m-lines that are missing from the reconstructed answer,
+        // potentially grabbing them from the cached (unified) answer. One has
+        // to be carefull with this approach because inactive m-lines do not
+        // always have an mid, making it tricky (impossible?) to find where
+        // exactly and which m-lines are missing from the reconstructed answer.
 
-        if (typeof cache['offer'] === 'undefined') {
-            throw new Error("An answer is being processed but we couldn't " +
-                    "find a cached offer.");
-        }
+        for (var i = 0; i < cached.media.length; i++) {
+            var unifiedLine = cached.media[i];
 
-        var cachedOffer = transform.parse(cache['offer']);
+            if (typeof mid2ul[unifiedLine.mid] === 'undefined') {
 
-        if (typeof cachedOffer === 'undefined' ||
-            typeof cachedOffer.media === 'undefined' ||
-            !Array.isArray(cachedOffer.media)) {
-                // FIXME(gp) is this really a problem in the general case?
-                throw new Error("The cached offer has no media.");
-        }
+                // The mid isn't in the reconstructed (unified) answer.
+                // This is either a (unified) m-line containing a remote
+                // track only, or a (unified) m-line containing a remote
+                // track and a local track that has been removed.
+                // In either case, it MUST exist in the cached
+                // (unified) answer.
+                //
+                // In case this is a removed local track, clean-up
+                // the (unified) m-line and make sure it's 'recvonly' or
+                // 'inactive'.
 
-        cachedOffer.media.forEach(function(mo) {
-
-            var mLine;
-            if (typeof media[mo.mid] === 'undefined') {
-
-                // This is probably an m-line containing a remote track only.
-                // It MUST exist in the cached answer as a remote track only
-                // mLine.
-
-                cached.media.every(function(ma) {
-                    if (mo.mid == ma.mid) {
-                        mLine = ma;
-                        return false;
-                    } else {
-                        return true;
-                    }
-                });
+                delete unifiedLine.msid;
+                delete unifiedLine.sources;
+                delete unifiedLine.ssrcGroups;
+                if (!unifiedLine.direction
+                    || unifiedLine.direction === 'sendrecv')
+                    unifiedLine.direction = 'recvonly';
+                if (!unifiedLine.direction
+                    || unifiedLine.direction === 'sendonly')
+                    unifiedLine.direction = 'inactive';
             } else {
-                mLine = media[mo.mid];
+                // This is an (unified) m-line/channel that contains a local
+                // track (sendrecv or sendonly channel) or it's a unified
+                // recvonly m-line/channel. In either case, since we're
+                // going from PlanB -> Unified Plan this m-line MUST
+                // exist in the cached answer.
             }
 
-            if (typeof mLine === 'undefined') {
-                throw new Error("The cached offer contains an m-line that " +
-                        "doesn't exist neither in the cached answer nor in " +
-                        "the converted answer.");
-            }
+            session.media.push(unifiedLine);
 
-            session.media.push(mLine);
-            mids.push(mLine.mid);
-        });
+            if (typeof unifiedLine.mid === 'string') {
+                // inactive lines don't/may not have an mid.
+                mids.push(unifiedLine.mid);
+            }
+        }
     } else {
 
         // SDP offer/answer (and the JSEP spec) forbids removing an m-section
@@ -26388,35 +28393,57 @@ Interop.prototype.toPlanA = function(desc) {
         if (typeof cached !== 'undefined' &&
             typeof cached.media !== 'undefined' &&
             Array.isArray(cached.media)) {
-            cached.media.forEach(function(pm) {
-                mids.push(pm.mid);
-                if (typeof media[pm.mid] !== 'undefined') {
-                    session.media.push(media[pm.mid]);
+            cached.media.forEach(function(unifiedLine) {
+                mids.push(unifiedLine.mid);
+                if (typeof mid2ul[unifiedLine.mid] !== 'undefined') {
+                    session.media.push(mid2ul[unifiedLine.mid]);
                 } else {
-                    delete pm.msid;
-                    delete pm.sources;
-                    delete pm.ssrcGroups;
-                    pm.direction = 'recvonly';
-                    session.media.push(pm);
+                    delete unifiedLine.msid;
+                    delete unifiedLine.sources;
+                    delete unifiedLine.ssrcGroups;
+                    if (!unifiedLine.direction
+                        || unifiedLine.direction === 'sendrecv')
+                        unifiedLine.direction = 'recvonly';
+                    if (!unifiedLine.direction
+                        || unifiedLine.direction === 'sendonly')
+                        unifiedLine.direction = 'inactive';
+                    session.media.push(unifiedLine);
                 }
             });
         }
 
         // Add all the remaining (new) m-lines of the transformed SDP.
-        Object.keys(media).forEach(function(mid) {
+        Object.keys(mid2ul).forEach(function(mid) {
             if (mids.indexOf(mid) === -1) {
                 mids.push(mid);
-                session.media.push(media[mid]);
+                if (typeof mid2ul[mid].direction === 'recvonly') {
+                    // This is a remote recvonly channel. Add its SSRC to the
+                    // appropriate sendrecv or sendonly channel.
+                    // TODO(gp) what if we don't have sendrecv/sendonly channel?
+                    session.media.some(function (unifiedLine) {
+                        if ((unifiedLine.direction === 'sendrecv' ||
+                            unifiedLine.direction === 'sendonly') &&
+                            unifiedLine.type === mid2ul[mid].type) {
+
+                            // mid2ul[mid] shouldn't have any ssrc-groups
+                            Object.keys(mid2ul[mid].sources).forEach(function (ssrc) {
+                                unifiedLine.sources[ssrc] = mid2ul[mid].sources[ssrc];
+                            });
+
+                            return true;
+                        }
+                    });
+                } else {
+                    session.media.push(mid2ul[mid]);
+                }
             }
         });
     }
 
     // We regenerate the BUNDLE group (since we regenerated the mids)
-    session.groups.every(function(group) {
+    session.groups.some(function(group) {
         if (group.type === 'BUNDLE') {
             group.mids = mids.join(' ');
-            return false;
-        } else {
             return true;
         }
     });
@@ -26429,8 +28456,9 @@ Interop.prototype.toPlanA = function(desc) {
 
     var resStr = transform.write(session);
 
-    // Cache the transformed SDP (Plan A) for later re-use in this function.
-    cache[desc.type] = resStr;
+    // Cache the transformed SDP (Unified Plan) for later re-use in this
+    // function.
+    this.cache[desc.type] = resStr;
 
     return new RTCSessionDescription({
         type: desc.type,
@@ -26440,7 +28468,7 @@ Interop.prototype.toPlanA = function(desc) {
     //#endregion
 };
 
-},{"./array-equals":79,"./transform":82}],82:[function(require,module,exports){
+},{"./array-equals":86,"./transform":89}],89:[function(require,module,exports){
 var transform = require('sdp-transform');
 
 exports.write = function(session, opts) {
@@ -26539,7 +28567,7 @@ exports.parse = function(sdp) {
 };
 
 
-},{"sdp-transform":84}],83:[function(require,module,exports){
+},{"sdp-transform":91}],90:[function(require,module,exports){
 var grammar = module.exports = {
   v: [{
       name: 'version',
@@ -26764,6 +28792,10 @@ var grammar = module.exports = {
       name: 'rtcpMux',
       reg: /^(rtcp-mux)/
     },
+    { //a=rtcp-rsize
+      name: 'rtcpRsize',
+      reg: /^(rtcp-rsize)/
+    },
     { // any a= that we don't understand is kepts verbatim on media.invalid
       push: 'invalid',
       names: ["value"]
@@ -26784,7 +28816,7 @@ Object.keys(grammar).forEach(function (key) {
   });
 });
 
-},{}],84:[function(require,module,exports){
+},{}],91:[function(require,module,exports){
 var parser = require('./parser');
 var writer = require('./writer');
 
@@ -26794,7 +28826,7 @@ exports.parseFmtpConfig = parser.parseFmtpConfig;
 exports.parsePayloads = parser.parsePayloads;
 exports.parseRemoteCandidates = parser.parseRemoteCandidates;
 
-},{"./parser":85,"./writer":86}],85:[function(require,module,exports){
+},{"./parser":92,"./writer":93}],92:[function(require,module,exports){
 var toIntIfInt = function (v) {
   return String(Number(v)) === v ? Number(v) : v;
 };
@@ -26889,7 +28921,7 @@ exports.parseRemoteCandidates = function (str) {
   return candidates;
 };
 
-},{"./grammar":83}],86:[function(require,module,exports){
+},{"./grammar":90}],93:[function(require,module,exports){
 var grammar = require('./grammar');
 
 // customized util.format - discards excess arguments and can void middle ones
@@ -27005,14 +29037,14 @@ module.exports = function (session, opts) {
   return sdp.join('\r\n') + '\r\n';
 };
 
-},{"./grammar":83}],87:[function(require,module,exports){
+},{"./grammar":90}],94:[function(require,module,exports){
 var MediaStreamType = {
     VIDEO_TYPE: "Video",
 
     AUDIO_TYPE: "Audio"
 };
 module.exports = MediaStreamType;
-},{}],88:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 var RTCBrowserType = {
     RTC_BROWSER_CHROME: "rtc_browser.chrome",
 
@@ -27020,7 +29052,7 @@ var RTCBrowserType = {
 };
 
 module.exports = RTCBrowserType;
-},{}],89:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 var RTCEvents = {
     LASTN_CHANGED: "rtc.lastn_changed",
     DOMINANTSPEAKER_CHANGED: "rtc.dominantspeaker_changed",
@@ -27033,7 +29065,7 @@ var RTCEvents = {
 };
 
 module.exports = RTCEvents;
-},{}],90:[function(require,module,exports){
+},{}],97:[function(require,module,exports){
 var Resolutions = {
     "1080": {
         width: 1920,
@@ -27087,7 +29119,7 @@ var Resolutions = {
     }
 };
 module.exports = Resolutions;
-},{}],91:[function(require,module,exports){
+},{}],98:[function(require,module,exports){
 var StreamEventTypes = {
     EVENT_TYPE_LOCAL_CREATED: "stream.local_created",
 
@@ -27103,14 +29135,14 @@ var StreamEventTypes = {
 };
 
 module.exports = StreamEventTypes;
-},{}],92:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 var UIEvents = {
     NICKNAME_CHANGED: "UI.nickname_changed",
     SELECTED_ENDPOINT: "UI.selected_endpoint",
     PINNED_ENDPOINT: "UI.pinned_endpoint"
 };
 module.exports = UIEvents;
-},{}],93:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 var AuthenticationEvents = {
     /**
      * Event callback arguments:
@@ -27124,7 +29156,7 @@ var AuthenticationEvents = {
 };
 module.exports = AuthenticationEvents;
 
-},{}],94:[function(require,module,exports){
+},{}],101:[function(require,module,exports){
 var CQEvents = {
     LOCALSTATS_UPDATED: "cq.localstats_updated",
     REMOTESTATS_UPDATED: "cq.remotestats_updated",
@@ -27132,7 +29164,7 @@ var CQEvents = {
 };
 
 module.exports = CQEvents;
-},{}],95:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 var DesktopSharingEventTypes = {
     INIT: "ds.init",
 
@@ -27142,7 +29174,14 @@ var DesktopSharingEventTypes = {
 };
 
 module.exports = DesktopSharingEventTypes;
-},{}],96:[function(require,module,exports){
+},{}],103:[function(require,module,exports){
+var Events = {
+    DTMF_SUPPORT_CHANGED: "members.dtmf_support_changed"
+};
+
+module.exports = Events;
+
+},{}],104:[function(require,module,exports){
 module.exports = {
     getLanguages : function () {
         var languages = [];
@@ -27158,25 +29197,29 @@ module.exports = {
     DE: "de",
     TR: "tr"
 }
-},{}],97:[function(require,module,exports){
+},{}],105:[function(require,module,exports){
 var XMPPEvents = {
-    CONFERENCE_CERATED: "xmpp.conferenceCreated.jingle",
+    CONNECTION_FAILED: "xmpp.connection.failed",
+    CONFERENCE_CREATED: "xmpp.conferenceCreated.jingle",
     CALL_TERMINATED: "xmpp.callterminated.jingle",
     CALL_INCOMING: "xmpp.callincoming.jingle",
-    DISPOSE_CONFERENCE: "xmpp.dispoce_confernce",
+    DISPOSE_CONFERENCE: "xmpp.dispose_conference",
     GRACEFUL_SHUTDOWN: "xmpp.graceful_shutdown",
     KICKED: "xmpp.kicked",
     BRIDGE_DOWN: "xmpp.bridge_down",
     USER_ID_CHANGED: "xmpp.user_id_changed",
-    CHANGED_STREAMS: "xmpp.changed_streams",
+    STREAMS_CHANGED: "xmpp.streams_changed",
+    // We joined the MUC
     MUC_JOINED: "xmpp.muc_joined",
-    MUC_ENTER: "xmpp.muc_enter",
+    // A member joined the MUC
+    MUC_MEMBER_JOINED: "xmpp.muc_member_joined",
+    // A member left the MUC
+    MUC_MEMBER_LEFT: "xmpp.muc_member_left",
     MUC_ROLE_CHANGED: "xmpp.muc_role_changed",
-    MUC_LEFT: "xmpp.muc_left",
     MUC_DESTROYED: "xmpp.muc_destroyed",
     DISPLAY_NAME_CHANGED: "xmpp.display_name_changed",
     REMOTE_STATS: "xmpp.remote_stats",
-    LOCALROLE_CHANGED: "xmpp.localrole_changed",
+    LOCAL_ROLE_CHANGED: "xmpp.localrole_changed",
     PRESENCE_STATUS: "xmpp.presence_status",
     RESERVATION_ERROR: "xmpp.room_reservation_error",
     SUBJECT_CHANGED: "xmpp.subject_changed",
@@ -27186,10 +29229,11 @@ var XMPPEvents = {
     AUTHENTICATION_REQUIRED: "xmpp.authentication_required",
     CHAT_ERROR_RECEIVED: "xmpp.chat_error_received",
     ETHERPAD: "xmpp.etherpad",
-    DEVICE_AVAILABLE: "xmpp.device_available"
+    DEVICE_AVAILABLE: "xmpp.device_available",
+    START_MUTED: "xmpp.start_muted"
 };
 module.exports = XMPPEvents;
-},{}],98:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -27491,6 +29535,65 @@ function isObject(arg) {
 function isUndefined(arg) {
   return arg === void 0;
 }
+
+},{}],107:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+var queue = [];
+var draining = false;
+
+function drainQueue() {
+    if (draining) {
+        return;
+    }
+    draining = true;
+    var currentQueue;
+    var len = queue.length;
+    while(len) {
+        currentQueue = queue;
+        queue = [];
+        var i = -1;
+        while (++i < len) {
+            currentQueue[i]();
+        }
+        len = queue.length;
+    }
+    draining = false;
+}
+process.nextTick = function (fun) {
+    queue.push(fun);
+    if (!draining) {
+        setTimeout(drainQueue, 0);
+    }
+};
+
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+process.version = ''; // empty string to avoid regexp issues
+
+function noop() {}
+
+process.on = noop;
+process.addListener = noop;
+process.once = noop;
+process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
+process.emit = noop;
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+};
+
+// TODO(shtylman)
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+process.umask = function() { return 0; };
 
 },{}]},{},[1])(1)
 });

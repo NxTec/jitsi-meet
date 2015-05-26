@@ -26,10 +26,17 @@ var DesktopSharingEventTypes
 var RTCEvents = require("../../service/RTC/RTCEvents");
 var StreamEventTypes = require("../../service/RTC/StreamEventTypes");
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
+var MemberEvents = require("../../service/members/Events");
 
 var eventEmitter = new EventEmitter();
 var roomName = null;
 
+
+function notifyForInitialMute()
+{
+    messageHandler.notify(null, "notify.mutedTitle", "connected",
+        "notify.muted", null, {timeOut: 120000});
+}
 
 function setupPrezi()
 {
@@ -53,24 +60,42 @@ function setupToolbars() {
     BottomToolbar.init();
 }
 
-function streamHandler(stream) {
+function streamHandler(stream, isMuted) {
     switch (stream.type)
     {
         case "audio":
-            VideoLayout.changeLocalAudio(stream);
+            VideoLayout.changeLocalAudio(stream, isMuted);
             break;
         case "video":
-            VideoLayout.changeLocalVideo(stream);
+            VideoLayout.changeLocalVideo(stream, isMuted);
             break;
         case "stream":
-            VideoLayout.changeLocalStream(stream);
+            VideoLayout.changeLocalStream(stream, isMuted);
             break;
     }
 }
 
+function onXmppConnectionFailed(stropheErrorMsg) {
+
+    var title = APP.translation.generateTranslatonHTML(
+        "dialog.error");
+
+    var message;
+    if (stropheErrorMsg) {
+        message = APP.translation.generateTranslatonHTML(
+            "dialog.connectErrorWithMsg", {msg: stropheErrorMsg});
+    } else {
+        message = APP.translation.generateTranslatonHTML(
+            "dialog.connectError");
+    }
+
+    messageHandler.openDialog(
+        title, message, true, {}, function (e, v, m, f) { return false; });
+}
+
 function onDisposeConference(unload) {
     Toolbar.showAuthenticateButton(false);
-};
+}
 
 function onDisplayNameChanged(jid, displayName) {
     ContactList.onDisplayNameChange(jid, displayName);
@@ -140,6 +165,7 @@ function registerListeners() {
         VideoLayout.updateConnectionStats);
     APP.connectionquality.addListener(CQEvents.STOP,
         VideoLayout.onStatsStop);
+    APP.xmpp.addListener(XMPPEvents.CONNECTION_FAILED, onXmppConnectionFailed);
     APP.xmpp.addListener(XMPPEvents.DISPOSE_CONFERENCE, onDisposeConference);
     APP.xmpp.addListener(XMPPEvents.GRACEFUL_SHUTDOWN, function () {
         messageHandler.openMessageDialog(
@@ -185,7 +211,7 @@ function registerListeners() {
     APP.xmpp.addListener(XMPPEvents.USER_ID_CHANGED, function (from, id) {
         Avatar.setUserAvatar(from, id);
     });
-    APP.xmpp.addListener(XMPPEvents.CHANGED_STREAMS, function (jid, changedStreams) {
+    APP.xmpp.addListener(XMPPEvents.STREAMS_CHANGED, function (jid, changedStreams) {
         for(stream in changedStreams)
         {
             // might need to update the direction if participant just went from sendrecv to recvonly
@@ -207,14 +233,14 @@ function registerListeners() {
     });
     APP.xmpp.addListener(XMPPEvents.DISPLAY_NAME_CHANGED, onDisplayNameChanged);
     APP.xmpp.addListener(XMPPEvents.MUC_JOINED, onMucJoined);
-    APP.xmpp.addListener(XMPPEvents.LOCALROLE_CHANGED, onLocalRoleChange);
-    APP.xmpp.addListener(XMPPEvents.MUC_ENTER, onMucEntered);
+    APP.xmpp.addListener(XMPPEvents.LOCAL_ROLE_CHANGED, onLocalRoleChanged);
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_JOINED, onMucMemberJoined);
     APP.xmpp.addListener(XMPPEvents.MUC_ROLE_CHANGED, onMucRoleChanged);
     APP.xmpp.addListener(XMPPEvents.PRESENCE_STATUS, onMucPresenceStatus);
     APP.xmpp.addListener(XMPPEvents.SUBJECT_CHANGED, chatSetSubject);
     APP.xmpp.addListener(XMPPEvents.MESSAGE_RECEIVED, updateChatConversation);
-    APP.xmpp.addListener(XMPPEvents.MUC_LEFT, onMucLeft);
-    APP.xmpp.addListener(XMPPEvents.PASSWORD_REQUIRED, onPasswordReqiured);
+    APP.xmpp.addListener(XMPPEvents.MUC_MEMBER_LEFT, onMucMemberLeft);
+    APP.xmpp.addListener(XMPPEvents.PASSWORD_REQUIRED, onPasswordRequired);
     APP.xmpp.addListener(XMPPEvents.CHAT_ERROR_RECEIVED, chatAddError);
     APP.xmpp.addListener(XMPPEvents.ETHERPAD, initEtherpad);
     APP.xmpp.addListener(XMPPEvents.AUTHENTICATION_REQUIRED,
@@ -224,6 +250,11 @@ function registerListeners() {
             VideoLayout.setDeviceAvailabilityIcons(resource, devices);
         });
 
+    APP.members.addListener(MemberEvents.DTMF_SUPPORT_CHANGED,
+                            onDtmfSupportChanged);
+    APP.xmpp.addListener(XMPPEvents.START_MUTED, function (audio, video) {
+        SettingsMenu.setStartMuted(audio, video);
+    });
 }
 
 
@@ -411,13 +442,16 @@ function onMucJoined(jid, info) {
 
     if (displayName)
         onDisplayNameChanged('localVideoContainer', displayName);
+
+
+    VideoLayout.mucJoined();
 }
 
 function initEtherpad(name) {
     Etherpad.init(name);
 };
 
-function onMucLeft(jid) {
+function onMucMemberLeft(jid) {
     console.log('left.muc', jid);
     var displayName = $('#participant_' + Strophe.getResourceFromJid(jid) +
         '>.displayname').html();
@@ -444,12 +478,13 @@ function onMucLeft(jid) {
 };
 
 
-function onLocalRoleChange(jid, info, pres, isModerator)
+function onLocalRoleChanged(jid, info, pres, isModerator)
 {
 
     console.info("My role changed, new role: " + info.role + " isModerator: " + isModerator);
     onModeratorStatusChanged(isModerator);
     VideoLayout.showModeratorIndicator();
+    SettingsMenu.onRoleChanged();
 
     if (isModerator) {
         APP.xmpp.lockRoom();
@@ -474,7 +509,7 @@ function onModeratorStatusChanged(isModerator) {
     }
 };
 
-function onPasswordReqiured(callback) {
+function onPasswordRequired(callback) {
     // password is required
     Toolbar.lockLockButton();
     var message = '<h2 data-i18n="dialog.passwordRequired">';
@@ -503,7 +538,17 @@ function onPasswordReqiured(callback) {
         ':input:first'
     );
 }
-function onMucEntered(jid, id, displayName) {
+
+/**
+ * The dialpad button is shown iff there is at least one member that supports
+ * DTMF (e.g. jigasi).
+ */
+function onDtmfSupportChanged(dtmfSupport) {
+    //TODO: enable when the UI is ready
+    //Toolbar.showDialPadButton(dtmfSupport);
+}
+
+function onMucMemberJoined(jid, id, displayName) {
     messageHandler.notify(displayName,'notify.somebody',
         'connected',
         'notify.connected');
@@ -685,6 +730,12 @@ UI.getRoomName = function () {
     return roomName;
 };
 
+UI.setInitialMuteFromFocus = function (muteAudio, muteVideo) {
+    if(muteAudio || muteVideo) notifyForInitialMute();
+    if(muteAudio) UI.setAudioMuted(true);
+    if(muteVideo) UI.setVideoMute(true);
+}
+
 /**
  * Mutes/unmutes the local video.
  */
@@ -702,9 +753,17 @@ UI.toggleAudio = function() {
 /**
  * Sets muted audio state for the local participant.
  */
-UI.setAudioMuted = function (mute) {
-
-    if(!APP.xmpp.setAudioMute(mute, function () {
+UI.setAudioMuted = function (mute, earlyMute) {
+    var audioMute = null;
+    if(earlyMute)
+        audioMute = function (mute, cb) {
+            return APP.xmpp.sendAudioInfoPresence(mute, cb);
+        };
+    else
+        audioMute = function (mute, cb) {
+            return APP.xmpp.setAudioMute(mute, cb);
+        }
+    if(!audioMute(mute, function () {
         VideoLayout.showLocalAudioIndicator(mute);
 
         UIUtil.buttonClick("#mute", "icon-microphone icon-mic-disabled");
@@ -751,6 +810,9 @@ UI.setVideoMuteButtonsState = function (mute) {
         video.addClass(communicativeClass);
     }
 }
+
+
+UI.setVideoMute = setVideoMute;
 
 module.exports = UI;
 

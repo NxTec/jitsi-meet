@@ -260,7 +260,7 @@ StatsCollector.prototype.start = function ()
         );
     }
 
-    if(!config.disableStats) {
+    if(!config.disableStats && !navigator.mozGetUserMedia) {
         this.statsIntervalId = setInterval(
             function () {
                 // Interval updates
@@ -294,7 +294,7 @@ StatsCollector.prototype.start = function ()
         );
     }
 
-    if (config.logStats) {
+    if (config.logStats && !navigator.mozGetUserMedia) {
         this.gatherStatsIntervalId = setInterval(
             function () {
                 self.peerconnection.getStats(

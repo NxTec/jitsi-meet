@@ -85,7 +85,7 @@ var Moderator = {
         }
     },
 
-    onMucLeft: function (jid) {
+    onMucMemberLeft: function (jid) {
         console.info("Someone left is it focus ? " + jid);
         var resource = Strophe.getResourceFromJid(jid);
         if (resource === 'focus' && !this.xmppService.sessionTerminated) {
@@ -175,6 +175,20 @@ var Moderator = {
             elem.c(
                 'property',
                 { name: 'openSctp', value: config.openSctp})
+                .up();
+        }
+        if(config.startAudioMuted !== undefined)
+        {
+            elem.c(
+                'property',
+                { name: 'startAudioMuted', value: config.startAudioMuted})
+                .up();
+        }
+        if(config.startVideoMuted !== undefined)
+        {
+            elem.c(
+                'property',
+                { name: 'startVideoMuted', value: config.startVideoMuted})
                 .up();
         }
         elem.up();

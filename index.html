@@ -10,7 +10,7 @@
     <meta itemprop="description" content="Join a WebRTC video conference powered by the Jitsi Videobridge"/>
     <meta itemprop="image" content="/images/jitsilogo.png"/>
     <script src="libs/jquery-2.1.1.min.js"></script>
-    <script src="config.js?v=6"></script><!-- adapt to your needs, i.e. set hosts and bosh path -->
+    <script src="config.js?v=8"></script><!-- adapt to your needs, i.e. set hosts and bosh path -->
     <script src="libs/strophe/strophe.min.js?v=1"></script>
     <script src="libs/strophe/strophe.disco.min.js?v=1"></script>
     <script src="libs/strophe/strophe.caps.jsonly.min.js?v=1"></script>
@@ -19,9 +19,13 @@
     <script src="libs/popover.js?v=1"></script><!-- bootstrap tooltip lib -->
     <script src="libs/toastr.js?v=1"></script><!-- notifications lib -->
     <script src="interface_config.js?v=5"></script>
+<<<<<<< HEAD
     <script src="libs/app.bundle.js?v=57"></script>
+=======
+    <script src="libs/app.bundle.js?v=74"></script>
+>>>>>>> upstream/master
     <script src="analytics.js?v=1"></script><!-- google analytics plugin -->
-    <link rel="stylesheet" href="css/font.css?v=6"/>
+    <link rel="stylesheet" href="css/font.css?v=7"/>
     <link rel="stylesheet" href="css/toastr.css?v=1">
     <link rel="stylesheet" href="css/nxtec.css?v=1">
     <link rel="stylesheet" type="text/css" media="screen" href="css/main.css?v=30"/>
@@ -215,10 +219,26 @@
                             </a>
                         </span>
                     </span>
+<<<<<<< HEAD
                     <span id="toolbar_settings">
                         <div class="header_button_separator"></div>
                         <a class="button" id="toolbar_button_settings" data-container="body" data-toggle="popover" data-placement="bottom" content="Settings" data-i18n="[content]toolbar.Settings">
                             <i id="settingsButton" class="icon-settings"></i>
+=======
+                    <span id="dialPadButton" style="display: none">
+                        <div class="header_button_separator"></div>
+                        <a class="button" id="toolbar_button_dialpad" data-container="body" data-toggle="popover" data-placement="bottom" content="Open dialpad" data-i18n="[content]toolbar.dialpad">
+                            <i class="icon-dialpad"></i></a>
+                    </span>
+                    <div class="header_button_separator"></div>
+                    <a class="button" id="toolbar_button_settings" data-container="body" data-toggle="popover" data-placement="bottom" content="Settings" data-i18n="[content]toolbar.Settings">
+                        <i id="settingsButton" class="icon-settings"></i>
+                    </a>
+                    <div class="header_button_separator"></div>
+                    <span id="hangup">
+                        <a class="button" id="toolbar_button_hangup" data-container="body" data-toggle="popover" data-placement="bottom" content="Hang Up" data-i18n="[content]toolbar.hangup">
+                            <i class="icon-hangup" style="color:#ff0000;font-size: 1.4em;"></i>
+>>>>>>> upstream/master
                         </a>
                     </span>
                     <span id="toolbar_hangup">
@@ -316,9 +336,19 @@
             <div class="arrow-up"></div>
             <input type="text" id="setDisplayName" data-i18n="[placeholder]settings.name" placeholder="Name">
             <input type="text" id="setEmail" placeholder="E-Mail">
+            <div id = "startMutedOptions">
+                <label class = "startMutedLabel">
+                    <input type="checkbox" id="startAudioMuted">
+                    <span  data-i18n="settings.startAudioMuted"></span>
+                </label>
+                <label class = "startMutedLabel">
+                    <input type="checkbox" id="startVideoMuted">
+                    <span data-i18n="settings.startVideoMuted"></span>
+                </label>
+            </div>
             <button id="updateSettings" data-i18n="settings.update"></button>
         </div>
-        <a id="downloadlog" onclick='dump(event.target);' data-container="body" data-toggle="popover" data-placement="right" data-i18n="[data-content]downloadlogs" ><i class="fa fa-cloud-download"></i></a>
+        <a id="downloadlog" data-container="body" data-toggle="popover" data-placement="right" data-i18n="[data-content]downloadlogs" ><i class="fa fa-cloud-download"></i></a>
     </div>
     <script src="libs/nxtec.js?v=1"></script>
   </body>
