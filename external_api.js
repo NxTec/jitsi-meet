@@ -47,7 +47,7 @@ var JitsiMeetExternalAPI = (function () {
             this.iframeHolder.style.height = "100%";//height + "px";
         }
         this.frameName = "jitsiConferenceFrame" + JitsiMeetExternalAPI.id;
-        this.url = "//" + domain + "tabeebPlayer/vendor/jitsi-meet/index.html?node=";
+        this.url = "//" + domain + "/app/tabeebPlayer/vendor/jitsi-meet/index.html?node=";
         if (room_name)
             this.url += room_name;
         this.url += "#external";
