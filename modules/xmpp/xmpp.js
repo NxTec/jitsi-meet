@@ -39,24 +39,6 @@ function connect(jid, password) {
             connection.jingle.pc_constraints.optional.push({googIPv6: true});
         }
 
-<<<<<<< HEAD
-            if(password)
-                authenticatedUser = true;
-            maybeDoJoin();
-
-            // handle locking of room
-            //if (lockCode !== '' && lockCode.length > 0 && Moderator.isModerator()) {
-            //    console.log('xmpp.connect ... locking room ... code: ', lockCode);
-            //    lockRoom(code, onSuccess, onError, onNotSupported);
-            //}
-        } else if (status === Strophe.Status.CONNFAIL) {
-            if(msg === 'x-strophe-bad-non-anon-jid') {
-                anonymousConnectionFailed = true;
-            }
-        } else if (status === Strophe.Status.DISCONNECTED) {
-            if(anonymousConnectionFailed) {
-                // prompt user for username and password
-=======
         // Include user info in MUC presence
         var settings = Settings.getSettings();
         if (settings.email) {
@@ -162,8 +144,7 @@ function connect(jid, password) {
                         msg ? msg : lastErrorMsg);
                 }
             } else if (status === Strophe.Status.AUTHFAIL) {
-                // wrong password or username, prompt user
->>>>>>> upstream/master
+                // wrong password or username, prompt user  
                 XMPP.promptLogin();
 
             }

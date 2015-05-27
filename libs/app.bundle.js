@@ -1,4 +1,4 @@
-!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.APP=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.APP = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 /* jshint -W117 */
 /* application specific logic */
 
@@ -22,7 +22,7 @@ var APP =
 };
 
 function init() {
-
+    
     APP.RTC.start();
     APP.xmpp.start();
     APP.statistics.start();
@@ -44,7 +44,7 @@ $(document).ready(function () {
 
     APP.translation.init();
 
-    if(APP.API.isEnabled())
+    if(APP.API.isEnabled()) 
         APP.API.init();
 
     APP.UI.start(init);
@@ -84,8 +84,16 @@ var commands =
     muteVideo: APP.UI.toggleVideo,
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
-    toggleContactList: APP.UI.toggleContactList
+    toggleContactList: APP.UI.toggleContactList,
+    lockDown: lockDown
 };
+
+function lockDown(lockCode) {
+    console.log('API.lockDown lockCode:', lockCode);
+    console.log(APP);
+
+    APP.xmpp.setLockCode(lockCode);
+}
 
 
 /**
@@ -2014,12 +2022,13 @@ function onMucMemberLeft(jid) {
 function onLocalRoleChanged(jid, info, pres, isModerator)
 {
 
-    console.info("My role changed, new role: " + info.role);
+    console.info("My role changed, new role: " + info.role + " isModerator: " + isModerator);
     onModeratorStatusChanged(isModerator);
     VideoLayout.showModeratorIndicator();
     SettingsMenu.onRoleChanged();
 
     if (isModerator) {
+        APP.xmpp.lockRoom();
         Authentication.closeAuthenticationWindow();
         messageHandler.notify(null, "notify.me",
             'connected', "notify.moderator");
@@ -16514,11 +16523,19 @@ module.exports = function(XMPP, eventEmitter) {
         onPresenceError: function (pres) {
             var from = pres.getAttribute('from');
             if ($(pres).find('>error[type="auth"]>not-authorized[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
-                console.log('on password required', from);
+                console.log('on password required from:', from);
+
                 var self = this;
-                eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
-                    self.doJoin(from, value);
-                });
+                var lockCode = APP.xmpp.getLockCode();
+                if (lockCode.length > 0) {
+                    console.log('strophe.emuc.onPresenceError entering locked room with code:', lockCode);
+                    self.doJoin(from, lockCode);
+                }
+                else {
+                    eventEmitter.emit(XMPPEvents.PASSWORD_REQUIRED, function (value) {
+                        self.doJoin(from, value);
+                    });
+                }
             } else if ($(pres).find(
                 '>error[type="cancel"]>not-allowed[xmlns="urn:ietf:params:xml:ns:xmpp-stanzas"]').length) {
                 var toDomain = Strophe.getDomainFromJid(pres.getAttribute('to'));
@@ -17474,6 +17491,7 @@ var retry = require('retry');
 var eventEmitter = new EventEmitter();
 var connection = null;
 var authenticatedUser = false;
+var lockCode = '';
 
 function connect(jid, password) {
 
@@ -17603,15 +17621,13 @@ function connect(jid, password) {
                         msg ? msg : lastErrorMsg);
                 }
             } else if (status === Strophe.Status.AUTHFAIL) {
-                // wrong password or username, prompt user
+                // wrong password or username, prompt user  
                 XMPP.promptLogin();
 
             }
         });
     });
 }
-
-
 
 function maybeDoJoin() {
     if (connection && connection.connected &&
@@ -17729,6 +17745,9 @@ var XMPP = {
         }
         var jid = configDomain || window.location.hostname;
         connect(jid, null);
+    },
+    setLockcode: function (code) {
+        lockCode = code;
     },
     createConnection: function () {
         var bosh = config.bosh || '/http-bind';
@@ -18032,7 +18051,17 @@ var XMPP = {
         connection.emuc.setSubject(topic);
     },
     lockRoom: function (key, onSuccess, onError, onNotSupported) {
+        console.log('xmpp.lockRoom ... lockCode:', lockCode);
+        if (lockCode !== '' && lockCode.length > 0) key = lockCode;
         connection.emuc.lockRoom(key, onSuccess, onError, onNotSupported);
+    },
+    setLockCode: function (code) {
+        console.log('xmpp.setLockCode code:', code);
+        lockCode = code;
+    },
+    getLockCode: function () {
+        console.log('xmpp.getLockCode: ', lockCode);
+        return lockCode;
     },
     dial: function (to, from, roomName,roomPass) {
         connection.rayo.dial(to, from, roomName,roomPass);
@@ -29573,6 +29602,7 @@ process.browser = true;
 process.env = {};
 process.argv = [];
 process.version = ''; // empty string to avoid regexp issues
+process.versions = {};
 
 function noop() {}
 
