@@ -23,7 +23,8 @@ var commands =
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
     toggleContactList: APP.UI.toggleContactList,
-    lockDown: lockDown
+    lockDown: lockDown,
+    dispose: dispose
 };
 
 function lockDown(lockCode) {
@@ -31,6 +32,13 @@ function lockDown(lockCode) {
     console.log(APP);
 
     APP.xmpp.setLockCode(lockCode);
+}
+
+function dispose(lockCode) {
+    console.log('API.dispose');
+    console.log(APP);
+
+    APP.xmpp.disposeConference();
 }
 
 

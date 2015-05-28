@@ -204,6 +204,7 @@ var unload = (function () {
                 async: false,
                 cache: false,
                 contentType: 'application/xml',
+                dataType: 'jsonp',
                 data: "<body rid='" + (connection.rid || connection._proto.rid) +
                     "' xmlns='http://jabber.org/protocol/httpbind' sid='" +
                     (connection.sid || connection._proto.sid)  +
