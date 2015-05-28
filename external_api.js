@@ -14,6 +14,17 @@ var JitsiMeetExternalAPI = (function () {
      */
     var MIN_HEIGHT = 300;
 
+    var scriptSource = (function (scripts) {
+        var scripts = document.getElementsByTagName('script'),
+            script = scripts[scripts.length - 1];
+
+        if (script.getAttribute.length !== undefined) {
+            return script.src
+        }
+
+        return script.getAttribute('src', -1)
+    }());
+
     /**
      * Constructs new API instance. Creates iframe element that loads
      * Jitsi Meet.
@@ -47,7 +58,7 @@ var JitsiMeetExternalAPI = (function () {
             this.iframeHolder.style.height = "100%";//height + "px";
         }
         this.frameName = "jitsiConferenceFrame" + JitsiMeetExternalAPI.id;
-        this.url = "//" + domain + "/app/tabeebPlayer/vendor/jitsi-meet/index.html?node=";
+        this.url = scriptSource.substring(0, scriptSource.lastIndexOf("/")) + "/index.html?node="; // get index.html from same location as this script
         if (room_name)
             this.url += room_name;
         this.url += "#external";
