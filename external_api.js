@@ -94,11 +94,11 @@ var JitsiMeetExternalAPI = (function () {
      * @param object the object to be sent
      */
     JitsiMeetExternalAPI.prototype.sendMessage = function (object) {
-        if (this.frameLoaded) {
+        if (this.frameLoaded && this.frame && this.frame.contentWindow) {
             this.frame.contentWindow.postMessage(
                 JSON.stringify(object), this.frame.src);
         }
-        else {
+        else if (this.initialCommands) {
             this.initialCommands.push(object);
         }
 
@@ -340,20 +340,17 @@ var JitsiMeetExternalAPI = (function () {
      */
     JitsiMeetExternalAPI.prototype.dispose = function () {
         if (window.removeEventListener) {
-            window.removeEventListener('message',
-                this.eventListener, false);
+            window.removeEventListener('message', this.eventListener, false);
         }
         else {
-            window.detachEvent('onmessage',
-                this.eventListener);
+            window.detachEvent('onmessage', this.eventListener);
         }
         var frame = document.getElementById(this.frameName);
-        if (frame)
-            frame.src = 'about:blank';
+        if (frame) frame.src = 'about:blank';
         var self = this;
         window.setTimeout(function () {
-            self.iframeHolder.removeChild(self.frame);
-            self.iframeHolder.parentNode.removeChild(self.iframeHolder);
+            if (self.frame.parentNode) self.iframeHolder.removeChild(self.frame);
+            if (self.iframeHolder.parentNode) self.iframeHolder.parentNode.removeChild(self.iframeHolder);
         }, 10);
     };
 
