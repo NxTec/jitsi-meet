@@ -36,9 +36,10 @@ function init() {
 
 
 $(document).ready(function () {
-
-    var URLPRocessor = require("./modules/URLProcessor/URLProcessor");
-    URLPRocessor.setConfigParametersFromUrl();
+    // comment this out for now
+    //var URLPRocessor = require("./modules/URLProcessor/URLProcessor");
+    //URLPRocessor.setConfigParametersFromUrl();
+    
     APP.init();
 
     APP.translation.init();
@@ -58,7 +59,7 @@ $(window).bind('beforeunload', function () {
 module.exports = APP;
 
 
-},{"./modules/API/API":2,"./modules/DTMF/DTMF":3,"./modules/RTC/RTC":7,"./modules/UI/UI":9,"./modules/URLProcessor/URLProcessor":36,"./modules/connectionquality/connectionquality":37,"./modules/desktopsharing/desktopsharing":38,"./modules/keyboardshortcut/keyboardshortcut":39,"./modules/members/MemberList":40,"./modules/settings/Settings":41,"./modules/statistics/statistics":44,"./modules/translation/translation":45,"./modules/xmpp/xmpp":59}],2:[function(require,module,exports){
+},{"./modules/API/API":2,"./modules/DTMF/DTMF":3,"./modules/RTC/RTC":7,"./modules/UI/UI":9,"./modules/connectionquality/connectionquality":36,"./modules/desktopsharing/desktopsharing":37,"./modules/keyboardshortcut/keyboardshortcut":38,"./modules/members/MemberList":39,"./modules/settings/Settings":40,"./modules/statistics/statistics":43,"./modules/translation/translation":44,"./modules/xmpp/xmpp":58}],2:[function(require,module,exports){
 /**
  * Implements API class that communicates with external api class
  * and provides interface to access Jitsi Meet features by external
@@ -84,7 +85,9 @@ var commands =
     toggleFilmStrip: APP.UI.toggleFilmStrip,
     toggleChat: APP.UI.toggleChat,
     toggleContactList: APP.UI.toggleContactList,
-    lockDown: lockDown
+    lockDown: lockDown,
+    dispose: dispose,
+    checkChromeExtension: checkChromeExtension
 };
 
 function lockDown(lockCode) {
@@ -92,6 +95,20 @@ function lockDown(lockCode) {
     console.log(APP);
 
     APP.xmpp.setLockCode(lockCode);
+}
+
+function dispose() {
+    console.log('API.dispose');
+    console.log(APP);
+
+    APP.xmpp.disposeConference();
+}
+
+function checkChromeExtension() {
+    console.log('API.checkChromeExtension checking...');
+    APP.desktopsharing.checkExtInstalled(function (installed, updateRequired) {
+        sendMessage({type: "event", action: "result", event: "checkChromeExtension", result: { installed: installed, updateRequired, updateRequired }});
+    });
 }
 
 
@@ -298,7 +315,7 @@ var API = {
 };
 
 module.exports = API;
-},{"../../service/xmpp/XMPPEvents":110}],3:[function(require,module,exports){
+},{"../../service/xmpp/XMPPEvents":105}],3:[function(require,module,exports){
 /* global APP */
 
 /**
@@ -565,7 +582,7 @@ function onPinnedEndpointChanged(userResource)
 module.exports = DataChannels;
 
 
-},{"../../service/RTC/RTCEvents":101}],5:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96}],5:[function(require,module,exports){
 var StreamEventTypes = require("../../service/RTC/StreamEventTypes.js");
 
 
@@ -673,7 +690,7 @@ LocalStream.prototype.getId = function () {
 
 module.exports = LocalStream;
 
-},{"../../service/RTC/StreamEventTypes.js":103}],6:[function(require,module,exports){
+},{"../../service/RTC/StreamEventTypes.js":98}],6:[function(require,module,exports){
 ////These lines should be uncommented when require works in app.js
 var MediaStreamType = require("../../service/RTC/MediaStreamTypes");
 var StreamEventType = require("../../service/RTC/StreamEventTypes");
@@ -735,7 +752,7 @@ MediaStream.prototype.setVideoType = function (value) {
 
 module.exports = MediaStream;
 
-},{"../../service/RTC/MediaStreamTypes":99,"../../service/RTC/StreamEventTypes":103}],7:[function(require,module,exports){
+},{"../../service/RTC/MediaStreamTypes":94,"../../service/RTC/StreamEventTypes":98}],7:[function(require,module,exports){
 var EventEmitter = require("events");
 var RTCUtils = require("./RTCUtils.js");
 var LocalStream = require("./LocalStream.js");
@@ -1021,7 +1038,7 @@ var RTC = {
 
 module.exports = RTC;
 
-},{"../../service/RTC/MediaStreamTypes":99,"../../service/RTC/RTCEvents.js":101,"../../service/RTC/StreamEventTypes.js":103,"../../service/UI/UIEvents":104,"../../service/desktopsharing/DesktopSharingEventTypes":107,"../../service/xmpp/XMPPEvents":110,"./DataChannels":4,"./LocalStream.js":5,"./MediaStream.js":6,"./RTCUtils.js":8,"events":111}],8:[function(require,module,exports){
+},{"../../service/RTC/MediaStreamTypes":94,"../../service/RTC/RTCEvents.js":96,"../../service/RTC/StreamEventTypes.js":98,"../../service/UI/UIEvents":99,"../../service/desktopsharing/DesktopSharingEventTypes":102,"../../service/xmpp/XMPPEvents":105,"./DataChannels":4,"./LocalStream.js":5,"./MediaStream.js":6,"./RTCUtils.js":8,"events":106}],8:[function(require,module,exports){
 var RTCBrowserType = require("../../service/RTC/RTCBrowserType.js");
 var Resolutions = require("../../service/RTC/Resolutions");
 
@@ -1495,7 +1512,7 @@ RTCUtils.prototype.createStream = function(stream, isVideo)
 
 module.exports = RTCUtils;
 
-},{"../../service/RTC/RTCBrowserType.js":100,"../../service/RTC/Resolutions":102}],9:[function(require,module,exports){
+},{"../../service/RTC/RTCBrowserType.js":95,"../../service/RTC/Resolutions":97}],9:[function(require,module,exports){
 var UI = {};
 
 var VideoLayout = require("./videolayout/VideoLayout.js");
@@ -2313,7 +2330,7 @@ UI.setVideoMute = setVideoMute;
 module.exports = UI;
 
 
-},{"../../service/RTC/RTCEvents":101,"../../service/RTC/StreamEventTypes":103,"../../service/connectionquality/CQEvents":106,"../../service/desktopsharing/DesktopSharingEventTypes":107,"../../service/members/Events":108,"../../service/xmpp/XMPPEvents":110,"./../settings/Settings":41,"./audio_levels/AudioLevels.js":10,"./authentication/Authentication":12,"./avatar/Avatar":14,"./etherpad/Etherpad.js":15,"./prezi/Prezi.js":16,"./side_pannels/SidePanelToggler":18,"./side_pannels/chat/Chat.js":19,"./side_pannels/contactlist/ContactList":23,"./side_pannels/settings/SettingsMenu":24,"./toolbars/BottomToolbar":25,"./toolbars/Toolbar":26,"./toolbars/ToolbarToggler":27,"./util/MessageHandler":29,"./util/NicknameHandler":30,"./util/UIUtil":31,"./videolayout/VideoLayout.js":33,"./welcome_page/RoomnameGenerator":34,"./welcome_page/WelcomePage":35,"events":111}],10:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96,"../../service/RTC/StreamEventTypes":98,"../../service/connectionquality/CQEvents":101,"../../service/desktopsharing/DesktopSharingEventTypes":102,"../../service/members/Events":103,"../../service/xmpp/XMPPEvents":105,"./../settings/Settings":40,"./audio_levels/AudioLevels.js":10,"./authentication/Authentication":12,"./avatar/Avatar":14,"./etherpad/Etherpad.js":15,"./prezi/Prezi.js":16,"./side_pannels/SidePanelToggler":18,"./side_pannels/chat/Chat.js":19,"./side_pannels/contactlist/ContactList":23,"./side_pannels/settings/SettingsMenu":24,"./toolbars/BottomToolbar":25,"./toolbars/Toolbar":26,"./toolbars/ToolbarToggler":27,"./util/MessageHandler":29,"./util/NicknameHandler":30,"./util/UIUtil":31,"./videolayout/VideoLayout.js":33,"./welcome_page/RoomnameGenerator":34,"./welcome_page/WelcomePage":35,"events":106}],10:[function(require,module,exports){
 var CanvasUtil = require("./CanvasUtils");
 
 var ASDrawContext = $('#activeSpeakerAudioLevel')[0].getContext('2d');
@@ -2816,7 +2833,7 @@ var Authentication = {
 };
 
 module.exports = Authentication;
-},{"../../xmpp/moderator":51,"./LoginDialog":13}],13:[function(require,module,exports){
+},{"../../xmpp/moderator":50,"./LoginDialog":13}],13:[function(require,module,exports){
 /* global $, APP, config*/
 
 var XMPP = require('../../xmpp/xmpp');
@@ -3045,7 +3062,7 @@ var LoginDialog = {
 };
 
 module.exports = LoginDialog;
-},{"../../xmpp/moderator":51,"../../xmpp/xmpp":59}],14:[function(require,module,exports){
+},{"../../xmpp/moderator":50,"../../xmpp/xmpp":58}],14:[function(require,module,exports){
 var Settings = require("../../settings/Settings");
 var MediaStreamType = require("../../../service/RTC/MediaStreamTypes");
 
@@ -3208,7 +3225,7 @@ var Avatar = {
 
 
 module.exports = Avatar;
-},{"../../../service/RTC/MediaStreamTypes":99,"../../settings/Settings":41,"../videolayout/VideoLayout":33}],15:[function(require,module,exports){
+},{"../../../service/RTC/MediaStreamTypes":94,"../../settings/Settings":40,"../videolayout/VideoLayout":33}],15:[function(require,module,exports){
 /* global $, config,
    setLargeVideoVisible, Util */
 
@@ -4333,7 +4350,7 @@ var PanelToggler = (function(my) {
 }(PanelToggler || {}));
 
 module.exports = PanelToggler;
-},{"../toolbars/ToolbarToggler":27,"../util/UIUtil":31,"../videolayout/VideoLayout":33,"./../../settings/Settings":41,"./chat/Chat":19,"./contactlist/ContactList":23,"./settings/SettingsMenu":24}],19:[function(require,module,exports){
+},{"../toolbars/ToolbarToggler":27,"../util/UIUtil":31,"../videolayout/VideoLayout":33,"./../../settings/Settings":40,"./chat/Chat":19,"./contactlist/ContactList":23,"./settings/SettingsMenu":24}],19:[function(require,module,exports){
 /* global $, Util, nickname:true */
 var Replacement = require("./Replacement");
 var CommandsProcessor = require("./Commands");
@@ -4691,7 +4708,7 @@ var Chat = (function (my) {
     return my;
 }(Chat || {}));
 module.exports = Chat;
-},{"../../../../service/UI/UIEvents":104,"../../toolbars/ToolbarToggler":27,"../../util/NicknameHandler":30,"../../util/UIUtil":31,"../SidePanelToggler":18,"./Commands":20,"./Replacement":21,"./smileys.json":22}],20:[function(require,module,exports){
+},{"../../../../service/UI/UIEvents":99,"../../toolbars/ToolbarToggler":27,"../../util/NicknameHandler":30,"../../util/UIUtil":31,"../SidePanelToggler":18,"./Commands":20,"./Replacement":21,"./smileys.json":22}],20:[function(require,module,exports){
 var UIUtil = require("../../util/UIUtil");
 
 /**
@@ -5203,7 +5220,7 @@ var SettingsMenu = {
 
 
 module.exports = SettingsMenu;
-},{"../../../../service/translation/languages":109,"../../avatar/Avatar":14,"../../util/UIUtil":31,"./../../../settings/Settings":41}],25:[function(require,module,exports){
+},{"../../../../service/translation/languages":104,"../../avatar/Avatar":14,"../../util/UIUtil":31,"./../../../settings/Settings":40}],25:[function(require,module,exports){
 var PanelToggler = require("../side_pannels/SidePanelToggler");
 
 var buttonHandlers = {
@@ -5897,7 +5914,7 @@ var Toolbar = (function (my) {
 }(Toolbar || {}));
 
 module.exports = Toolbar;
-},{"../../../service/authentication/AuthenticationEvents":105,"../authentication/Authentication":12,"../etherpad/Etherpad":15,"../prezi/Prezi":16,"../side_pannels/SidePanelToggler":18,"../util/MessageHandler":29,"../util/UIUtil":31,"./BottomToolbar":25}],27:[function(require,module,exports){
+},{"../../../service/authentication/AuthenticationEvents":100,"../authentication/Authentication":12,"../etherpad/Etherpad":15,"../prezi/Prezi":16,"../side_pannels/SidePanelToggler":18,"../util/MessageHandler":29,"../util/UIUtil":31,"./BottomToolbar":25}],27:[function(require,module,exports){
 /* global $, interfaceConfig, Moderator, DesktopStreaming.showDesktopSharingButton */
 
 var toolbarTimeoutObject,
@@ -6378,7 +6395,7 @@ var NickanameHandler = {
 };
 
 module.exports = NickanameHandler;
-},{"../../../service/UI/UIEvents":104}],31:[function(require,module,exports){
+},{"../../../service/UI/UIEvents":99}],31:[function(require,module,exports){
 /**
  * Created by hristo on 12/22/14.
  */
@@ -9007,7 +9024,7 @@ var VideoLayout = (function (my) {
 }(VideoLayout || {}));
 
 module.exports = VideoLayout;
-},{"../../../service/RTC/MediaStreamTypes":99,"../../../service/UI/UIEvents":104,"../audio_levels/AudioLevels":10,"../avatar/Avatar":14,"../etherpad/Etherpad":15,"../prezi/Prezi":16,"../side_pannels/chat/Chat":19,"../side_pannels/contactlist/ContactList":23,"../util/NicknameHandler":30,"../util/UIUtil":31,"./ConnectionIndicator":32}],34:[function(require,module,exports){
+},{"../../../service/RTC/MediaStreamTypes":94,"../../../service/UI/UIEvents":99,"../audio_levels/AudioLevels":10,"../avatar/Avatar":14,"../etherpad/Etherpad":15,"../prezi/Prezi":16,"../side_pannels/chat/Chat":19,"../side_pannels/contactlist/ContactList":23,"../util/NicknameHandler":30,"../util/UIUtil":31,"./ConnectionIndicator":32}],34:[function(require,module,exports){
 //var nouns = [
 //];
 var pluralNouns = [
@@ -9291,47 +9308,6 @@ function setupWelcomePage()
 
 module.exports = setupWelcomePage;
 },{"./RoomnameGenerator":34}],36:[function(require,module,exports){
-var params = {};
-function getConfigParamsFromUrl() {
-    if(!location.hash)
-        return {};
-    var hash = location.hash.substr(1);
-    var result = {};
-    hash.split("&").forEach(function(part) {
-        var item = part.split("=");
-        result[item[0]] = JSON.parse(
-            decodeURIComponent(item[1]).replace(/\\&/, "&"));
-    });
-    return result;
-}
-
-params = getConfigParamsFromUrl();
-
-var URLProcessor = {
-    setConfigParametersFromUrl: function () {
-        for(var k in params)
-        {
-            if(typeof k !== "string" || k.indexOf("config.") === -1)
-                continue;
-
-            var v = params[k];
-            var confKey = k.substr(7);
-            if(config[confKey] && typeof config[confKey] !== typeof v)
-            {
-                console.warn("The type of " + k +
-                    " is wrong. That parameter won't be updated in config.js.");
-                continue;
-            }
-
-            config[confKey] = v;
-
-        }
-
-    }
-};
-
-module.exports = URLProcessor;
-},{}],37:[function(require,module,exports){
 var EventEmitter = require("events");
 var eventEmitter = new EventEmitter();
 var CQEvents = require("../../service/connectionquality/CQEvents");
@@ -9466,7 +9442,7 @@ var ConnectionQuality = {
 };
 
 module.exports = ConnectionQuality;
-},{"../../service/connectionquality/CQEvents":106,"../../service/xmpp/XMPPEvents":110,"events":111}],38:[function(require,module,exports){
+},{"../../service/connectionquality/CQEvents":101,"../../service/xmpp/XMPPEvents":105,"events":106}],37:[function(require,module,exports){
 /* global $, alert, APP, changeLocalVideo, chrome, config, getConferenceHandler,
  getUserMediaWithConstraints */
 /**
@@ -9779,6 +9755,11 @@ module.exports = {
 
         eventEmitter.emit(DesktopSharingEventTypes.INIT);
     },
+    
+
+    checkExtInstalled: function (callback) {
+        checkExtInstalled(callback);
+    },
 
     addListener: function (listener, type)
     {
@@ -9834,7 +9815,7 @@ module.exports = {
 };
 
 
-},{"../../service/desktopsharing/DesktopSharingEventTypes":107,"events":111}],39:[function(require,module,exports){
+},{"../../service/desktopsharing/DesktopSharingEventTypes":102,"events":106}],38:[function(require,module,exports){
 //maps keycode to character, id of popover for given function and function
 var shortcuts = {
     67: {
@@ -9927,7 +9908,7 @@ var KeyboardShortcut = {
 
 module.exports = KeyboardShortcut;
 
-},{}],40:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 /* global APP */
 
 /**
@@ -10058,7 +10039,7 @@ var Members = {
 
 module.exports = Members;
 
-},{"../../service/members/Events":108,"../../service/xmpp/XMPPEvents":110,"events":111}],41:[function(require,module,exports){
+},{"../../service/members/Events":103,"../../service/xmpp/XMPPEvents":105,"events":106}],40:[function(require,module,exports){
 var email = '';
 var displayName = '';
 var userId;
@@ -10125,7 +10106,7 @@ var Settings =
 
 module.exports = Settings;
 
-},{}],42:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 /**
  * Provides statistics for the local stream.
  */
@@ -10256,7 +10237,7 @@ LocalStatsCollector.prototype.stop = function () {
 };
 
 module.exports = LocalStatsCollector;
-},{}],43:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 /* global ssrc2jid */
 /* jshint -W117 */
 var RTCBrowserType = require("../../service/RTC/RTCBrowserType");
@@ -10998,7 +10979,7 @@ StatsCollector.prototype.processAudioLevelReport = function ()
 
 };
 
-},{"../../service/RTC/RTCBrowserType":100}],44:[function(require,module,exports){
+},{"../../service/RTC/RTCBrowserType":95}],43:[function(require,module,exports){
 /**
  * Created by hristo on 8/4/14.
  */
@@ -11131,7 +11112,7 @@ var statistics =
 
 
 module.exports = statistics;
-},{"../../service/RTC/StreamEventTypes.js":103,"../../service/xmpp/XMPPEvents":110,"./LocalStatsCollector.js":42,"./RTPStatsCollector.js":43,"events":111}],45:[function(require,module,exports){
+},{"../../service/RTC/StreamEventTypes.js":98,"../../service/xmpp/XMPPEvents":105,"./LocalStatsCollector.js":41,"./RTPStatsCollector.js":42,"events":106}],44:[function(require,module,exports){
 var i18n = require("i18next-client");
 var languages = require("../../service/translation/languages");
 var Settings = require("../settings/Settings");
@@ -11270,7 +11251,7 @@ module.exports = {
     }
 };
 
-},{"../../service/translation/languages":109,"../settings/Settings":41,"i18next-client":61}],46:[function(require,module,exports){
+},{"../../service/translation/languages":104,"../settings/Settings":40,"i18next-client":60}],45:[function(require,module,exports){
 /* jshint -W117 */
 var TraceablePeerConnection = require("./TraceablePeerConnection");
 var SDPDiffer = require("./SDPDiffer");
@@ -12664,7 +12645,7 @@ JingleSession.prototype.remoteStreamAdded = function (data, times) {
 
 module.exports = JingleSession;
 
-},{"../../service/RTC/RTCBrowserType":100,"./SDP":47,"./SDPDiffer":48,"./SDPUtil":49,"./TraceablePeerConnection":50,"async":60,"sdp-transform":96}],47:[function(require,module,exports){
+},{"../../service/RTC/RTCBrowserType":95,"./SDP":46,"./SDPDiffer":47,"./SDPUtil":48,"./TraceablePeerConnection":49,"async":59,"sdp-transform":91}],46:[function(require,module,exports){
 /* jshint -W117 */
 var SDPUtil = require("./SDPUtil");
 
@@ -13286,7 +13267,7 @@ SDP.prototype.jingle2media = function (content) {
 module.exports = SDP;
 
 
-},{"./SDPUtil":49}],48:[function(require,module,exports){
+},{"./SDPUtil":48}],47:[function(require,module,exports){
 function SDPDiffer(mySDP, otherSDP) {
     this.mySDP = mySDP;
     this.otherSDP = otherSDP;
@@ -13452,7 +13433,7 @@ SDPDiffer.prototype.toJingle = function(modify) {
 };
 
 module.exports = SDPDiffer;
-},{}],49:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 SDPUtil = {
     iceparams: function (mediadesc, sessiondesc) {
         var data = null;
@@ -13802,7 +13783,7 @@ SDPUtil = {
     }
 };
 module.exports = SDPUtil;
-},{}],50:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 function TraceablePeerConnection(ice_config, constraints) {
     var self = this;
     var RTCPeerconnection = navigator.mozGetUserMedia ? mozRTCPeerConnection : webkitRTCPeerConnection;
@@ -14129,7 +14110,7 @@ TraceablePeerConnection.prototype.getStats = function(callback, errback) {
 module.exports = TraceablePeerConnection;
 
 
-},{"sdp-interop":82,"sdp-simulcast":89}],51:[function(require,module,exports){
+},{"sdp-interop":81,"sdp-simulcast":88}],50:[function(require,module,exports){
 /* global $, $iq, APP, config, connection, UI, messageHandler,
  roomName, sessionTerminated, Strophe, Util */
 var XMPPEvents = require("../../service/xmpp/XMPPEvents");
@@ -14565,7 +14546,7 @@ module.exports = Moderator;
 
 
 
-},{"../../service/authentication/AuthenticationEvents":105,"../../service/xmpp/XMPPEvents":110,"../settings/Settings":41}],52:[function(require,module,exports){
+},{"../../service/authentication/AuthenticationEvents":100,"../../service/xmpp/XMPPEvents":105,"../settings/Settings":40}],51:[function(require,module,exports){
 /* global $, $iq, config, connection, focusMucJid, messageHandler, Moderator,
    Toolbar, Util */
 var Moderator = require("./moderator");
@@ -14721,7 +14702,7 @@ var Recording = {
 }
 
 module.exports = Recording;
-},{"./moderator":51}],53:[function(require,module,exports){
+},{"./moderator":50}],52:[function(require,module,exports){
 /* jshint -W117 */
 /* a simple MUC connection plugin
  * can only handle a single MUC room
@@ -15422,7 +15403,7 @@ module.exports = function(XMPP, eventEmitter) {
 };
 
 
-},{"../../service/xmpp/XMPPEvents":110,"./JingleSession":46,"./moderator":51}],54:[function(require,module,exports){
+},{"../../service/xmpp/XMPPEvents":105,"./JingleSession":45,"./moderator":50}],53:[function(require,module,exports){
 /* jshint -W117 */
 
 var JingleSession = require("./JingleSession");
@@ -15771,7 +15752,7 @@ module.exports = function(XMPP, eventEmitter)
 };
 
 
-},{"../../service/xmpp/XMPPEvents":110,"./JingleSession":46}],55:[function(require,module,exports){
+},{"../../service/xmpp/XMPPEvents":105,"./JingleSession":45}],54:[function(require,module,exports){
 /* global Strophe */
 module.exports = function () {
 
@@ -15792,7 +15773,7 @@ module.exports = function () {
         }
     });
 };
-},{}],56:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 /* global $, $iq, config, connection, focusMucJid, forceMuted,
    setAudioMuted, Strophe */
 /**
@@ -15851,7 +15832,7 @@ module.exports = function (XMPP) {
         }
     });
 }
-},{}],57:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 /* jshint -W117 */
 module.exports = function() {
     Strophe.addConnectionPlugin('rayo',
@@ -15948,7 +15929,7 @@ module.exports = function() {
     );
 };
 
-},{}],58:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 /**
  * Strophe logger implementation. Logs from level WARN and above.
  */
@@ -15992,7 +15973,7 @@ module.exports = function () {
     };
 };
 
-},{}],59:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 /* global $, APP, config, Strophe*/
 var Moderator = require("./moderator");
 var EventEmitter = require("events");
@@ -16199,6 +16180,7 @@ var unload = (function () {
                 async: false,
                 cache: false,
                 contentType: 'application/xml',
+                dataType: 'jsonp',
                 data: "<body rid='" + (connection.rid || connection._proto.rid) +
                     "' xmlns='http://jabber.org/protocol/httpbind' sid='" +
                     (connection.sid || connection._proto.sid)  +
@@ -16620,7 +16602,7 @@ var XMPP = {
 
 module.exports = XMPP;
 
-},{"../../service/RTC/RTCEvents":101,"../../service/RTC/StreamEventTypes":103,"../../service/UI/UIEvents":104,"../../service/xmpp/XMPPEvents":110,"../settings/Settings":41,"./SDP":47,"./moderator":51,"./recording":52,"./strophe.emuc":53,"./strophe.jingle":54,"./strophe.logger":55,"./strophe.moderate":56,"./strophe.rayo":57,"./strophe.util":58,"events":111,"pako":62,"retry":78}],60:[function(require,module,exports){
+},{"../../service/RTC/RTCEvents":96,"../../service/RTC/StreamEventTypes":98,"../../service/UI/UIEvents":99,"../../service/xmpp/XMPPEvents":105,"../settings/Settings":40,"./SDP":46,"./moderator":50,"./recording":51,"./strophe.emuc":52,"./strophe.jingle":53,"./strophe.logger":54,"./strophe.moderate":55,"./strophe.rayo":56,"./strophe.util":57,"events":106,"pako":61,"retry":77}],59:[function(require,module,exports){
 (function (process){
 /*!
  * async
@@ -17747,7 +17729,7 @@ module.exports = XMPP;
 }());
 
 }).call(this,require('_process'))
-},{"_process":112}],61:[function(require,module,exports){
+},{"_process":107}],60:[function(require,module,exports){
 // i18next, v1.7.7
 // Copyright (c)2014 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
@@ -19870,7 +19852,7 @@ module.exports = XMPP;
     i18n.options = o;
 
 })();
-},{"jquery":"jquery"}],62:[function(require,module,exports){
+},{"jquery":"jquery"}],61:[function(require,module,exports){
 // Top level file is just a mixin of submodules & constants
 'use strict';
 
@@ -19886,7 +19868,7 @@ assign(pako, deflate, inflate, constants);
 
 module.exports = pako;
 
-},{"./lib/deflate":63,"./lib/inflate":64,"./lib/utils/common":65,"./lib/zlib/constants":68}],63:[function(require,module,exports){
+},{"./lib/deflate":62,"./lib/inflate":63,"./lib/utils/common":64,"./lib/zlib/constants":67}],62:[function(require,module,exports){
 'use strict';
 
 
@@ -20264,7 +20246,7 @@ exports.deflate = deflate;
 exports.deflateRaw = deflateRaw;
 exports.gzip = gzip;
 
-},{"./utils/common":65,"./utils/strings":66,"./zlib/deflate.js":70,"./zlib/messages":75,"./zlib/zstream":77}],64:[function(require,module,exports){
+},{"./utils/common":64,"./utils/strings":65,"./zlib/deflate.js":69,"./zlib/messages":74,"./zlib/zstream":76}],63:[function(require,module,exports){
 'use strict';
 
 
@@ -20645,7 +20627,7 @@ exports.inflate = inflate;
 exports.inflateRaw = inflateRaw;
 exports.ungzip  = inflate;
 
-},{"./utils/common":65,"./utils/strings":66,"./zlib/constants":68,"./zlib/gzheader":71,"./zlib/inflate.js":73,"./zlib/messages":75,"./zlib/zstream":77}],65:[function(require,module,exports){
+},{"./utils/common":64,"./utils/strings":65,"./zlib/constants":67,"./zlib/gzheader":70,"./zlib/inflate.js":72,"./zlib/messages":74,"./zlib/zstream":76}],64:[function(require,module,exports){
 'use strict';
 
 
@@ -20749,7 +20731,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],66:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 // String encode/decode helpers
 'use strict';
 
@@ -20936,7 +20918,7 @@ exports.utf8border = function(buf, max) {
   return (pos + _utf8len[buf[pos]] > max) ? pos : max;
 };
 
-},{"./common":65}],67:[function(require,module,exports){
+},{"./common":64}],66:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -20970,7 +20952,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],68:[function(require,module,exports){
+},{}],67:[function(require,module,exports){
 module.exports = {
 
   /* Allowed flush values; see deflate() and inflate() below for details */
@@ -21019,7 +21001,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],69:[function(require,module,exports){
+},{}],68:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -21062,7 +21044,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],70:[function(require,module,exports){
+},{}],69:[function(require,module,exports){
 'use strict';
 
 var utils   = require('../utils/common');
@@ -22829,7 +22811,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":65,"./adler32":67,"./crc32":69,"./messages":75,"./trees":76}],71:[function(require,module,exports){
+},{"../utils/common":64,"./adler32":66,"./crc32":68,"./messages":74,"./trees":75}],70:[function(require,module,exports){
 'use strict';
 
 
@@ -22871,7 +22853,7 @@ function GZheader() {
 
 module.exports = GZheader;
 
-},{}],72:[function(require,module,exports){
+},{}],71:[function(require,module,exports){
 'use strict';
 
 // See state defs from inflate.js
@@ -23198,7 +23180,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],73:[function(require,module,exports){
+},{}],72:[function(require,module,exports){
 'use strict';
 
 
@@ -24703,7 +24685,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":65,"./adler32":67,"./crc32":69,"./inffast":72,"./inftrees":74}],74:[function(require,module,exports){
+},{"../utils/common":64,"./adler32":66,"./crc32":68,"./inffast":71,"./inftrees":73}],73:[function(require,module,exports){
 'use strict';
 
 
@@ -25032,7 +25014,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":65}],75:[function(require,module,exports){
+},{"../utils/common":64}],74:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -25047,7 +25029,7 @@ module.exports = {
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],76:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 'use strict';
 
 
@@ -26248,7 +26230,7 @@ exports._tr_flush_block  = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":65}],77:[function(require,module,exports){
+},{"../utils/common":64}],76:[function(require,module,exports){
 'use strict';
 
 
@@ -26279,9 +26261,9 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],78:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 module.exports = require('./lib/retry');
-},{"./lib/retry":79}],79:[function(require,module,exports){
+},{"./lib/retry":78}],78:[function(require,module,exports){
 var RetryOperation = require('./retry_operation');
 
 exports.operation = function(options) {
@@ -26332,7 +26314,7 @@ exports._createTimeout = function(attempt, opts) {
 
   return timeout;
 };
-},{"./retry_operation":80}],80:[function(require,module,exports){
+},{"./retry_operation":79}],79:[function(require,module,exports){
 function RetryOperation(timeouts) {
   this._timeouts = timeouts;
   this._fn = null;
@@ -26442,7 +26424,7 @@ RetryOperation.prototype.mainError = function() {
 
   return mainError;
 };
-},{}],81:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 module.exports = function arrayEquals(array) {
     // if the other array is a falsy value, return
     if (!array)
@@ -26468,10 +26450,10 @@ module.exports = function arrayEquals(array) {
 }
 
 
-},{}],82:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 exports.Interop = require('./interop');
 
-},{"./interop":83}],83:[function(require,module,exports){
+},{"./interop":82}],82:[function(require,module,exports){
 "use strict";
 
 var transform = require('./transform');
@@ -27053,7 +27035,7 @@ Interop.prototype.toUnifiedPlan = function(desc) {
     //#endregion
 };
 
-},{"./array-equals":81,"./transform":84}],84:[function(require,module,exports){
+},{"./array-equals":80,"./transform":83}],83:[function(require,module,exports){
 var transform = require('sdp-transform');
 
 exports.write = function(session, opts) {
@@ -27152,7 +27134,7 @@ exports.parse = function(sdp) {
 };
 
 
-},{"sdp-transform":86}],85:[function(require,module,exports){
+},{"sdp-transform":85}],84:[function(require,module,exports){
 var grammar = module.exports = {
   v: [{
       name: 'version',
@@ -27401,7 +27383,7 @@ Object.keys(grammar).forEach(function (key) {
   });
 });
 
-},{}],86:[function(require,module,exports){
+},{}],85:[function(require,module,exports){
 var parser = require('./parser');
 var writer = require('./writer');
 
@@ -27411,7 +27393,7 @@ exports.parseFmtpConfig = parser.parseFmtpConfig;
 exports.parsePayloads = parser.parsePayloads;
 exports.parseRemoteCandidates = parser.parseRemoteCandidates;
 
-},{"./parser":87,"./writer":88}],87:[function(require,module,exports){
+},{"./parser":86,"./writer":87}],86:[function(require,module,exports){
 var toIntIfInt = function (v) {
   return String(Number(v)) === v ? Number(v) : v;
 };
@@ -27506,7 +27488,7 @@ exports.parseRemoteCandidates = function (str) {
   return candidates;
 };
 
-},{"./grammar":85}],88:[function(require,module,exports){
+},{"./grammar":84}],87:[function(require,module,exports){
 var grammar = require('./grammar');
 
 // customized util.format - discards excess arguments and can void middle ones
@@ -27622,7 +27604,7 @@ module.exports = function (session, opts) {
   return sdp.join('\r\n') + '\r\n';
 };
 
-},{"./grammar":85}],89:[function(require,module,exports){
+},{"./grammar":84}],88:[function(require,module,exports){
 var transform = require('sdp-transform');
 var transformUtils = require('./transform-utils');
 var parseSsrcs = transformUtils.parseSsrcs;
@@ -28024,7 +28006,7 @@ Simulcast.prototype.mungeLocalDescription = function (desc) {
 
 module.exports = Simulcast;
 
-},{"./transform-utils":90,"sdp-transform":92}],90:[function(require,module,exports){
+},{"./transform-utils":89,"sdp-transform":91}],89:[function(require,module,exports){
 exports.writeSsrcs = function(sources, order) {
   var ssrcs = [];
 
@@ -28075,30 +28057,22 @@ exports.parseSsrcs = function (mLine) {
 };
 
 
-},{}],91:[function(require,module,exports){
+},{}],90:[function(require,module,exports){
+arguments[4][84][0].apply(exports,arguments)
+},{"dup":84}],91:[function(require,module,exports){
 arguments[4][85][0].apply(exports,arguments)
-},{"dup":85}],92:[function(require,module,exports){
+},{"./parser":92,"./writer":93,"dup":85}],92:[function(require,module,exports){
 arguments[4][86][0].apply(exports,arguments)
-},{"./parser":93,"./writer":94,"dup":86}],93:[function(require,module,exports){
+},{"./grammar":90,"dup":86}],93:[function(require,module,exports){
 arguments[4][87][0].apply(exports,arguments)
-},{"./grammar":91,"dup":87}],94:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"./grammar":91,"dup":88}],95:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"dup":85}],96:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"./parser":97,"./writer":98,"dup":86}],97:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"./grammar":95,"dup":87}],98:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"./grammar":95,"dup":88}],99:[function(require,module,exports){
+},{"./grammar":90,"dup":87}],94:[function(require,module,exports){
 var MediaStreamType = {
     VIDEO_TYPE: "Video",
 
     AUDIO_TYPE: "Audio"
 };
 module.exports = MediaStreamType;
-},{}],100:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 var RTCBrowserType = {
     RTC_BROWSER_CHROME: "rtc_browser.chrome",
 
@@ -28106,7 +28080,7 @@ var RTCBrowserType = {
 };
 
 module.exports = RTCBrowserType;
-},{}],101:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 var RTCEvents = {
     LASTN_CHANGED: "rtc.lastn_changed",
     DOMINANTSPEAKER_CHANGED: "rtc.dominantspeaker_changed",
@@ -28115,7 +28089,7 @@ var RTCEvents = {
 };
 
 module.exports = RTCEvents;
-},{}],102:[function(require,module,exports){
+},{}],97:[function(require,module,exports){
 var Resolutions = {
     "1080": {
         width: 1920,
@@ -28169,7 +28143,7 @@ var Resolutions = {
     }
 };
 module.exports = Resolutions;
-},{}],103:[function(require,module,exports){
+},{}],98:[function(require,module,exports){
 var StreamEventTypes = {
     EVENT_TYPE_LOCAL_CREATED: "stream.local_created",
 
@@ -28185,14 +28159,14 @@ var StreamEventTypes = {
 };
 
 module.exports = StreamEventTypes;
-},{}],104:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 var UIEvents = {
     NICKNAME_CHANGED: "UI.nickname_changed",
     SELECTED_ENDPOINT: "UI.selected_endpoint",
     PINNED_ENDPOINT: "UI.pinned_endpoint"
 };
 module.exports = UIEvents;
-},{}],105:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 var AuthenticationEvents = {
     /**
      * Event callback arguments:
@@ -28206,7 +28180,7 @@ var AuthenticationEvents = {
 };
 module.exports = AuthenticationEvents;
 
-},{}],106:[function(require,module,exports){
+},{}],101:[function(require,module,exports){
 var CQEvents = {
     LOCALSTATS_UPDATED: "cq.localstats_updated",
     REMOTESTATS_UPDATED: "cq.remotestats_updated",
@@ -28214,7 +28188,7 @@ var CQEvents = {
 };
 
 module.exports = CQEvents;
-},{}],107:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 var DesktopSharingEventTypes = {
     INIT: "ds.init",
 
@@ -28224,14 +28198,14 @@ var DesktopSharingEventTypes = {
 };
 
 module.exports = DesktopSharingEventTypes;
-},{}],108:[function(require,module,exports){
+},{}],103:[function(require,module,exports){
 var Events = {
     DTMF_SUPPORT_CHANGED: "members.dtmf_support_changed"
 };
 
 module.exports = Events;
 
-},{}],109:[function(require,module,exports){
+},{}],104:[function(require,module,exports){
 module.exports = {
     getLanguages : function () {
         var languages = [];
@@ -28248,7 +28222,7 @@ module.exports = {
     TR: "tr",
     FR: "fr"
 }
-},{}],110:[function(require,module,exports){
+},{}],105:[function(require,module,exports){
 var XMPPEvents = {
     CONNECTION_FAILED: "xmpp.connection.failed",
     CONFERENCE_CREATED: "xmpp.conferenceCreated.jingle",
@@ -28284,7 +28258,7 @@ var XMPPEvents = {
     START_MUTED: "xmpp.start_muted"
 };
 module.exports = XMPPEvents;
-},{}],111:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -28587,7 +28561,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],112:[function(require,module,exports){
+},{}],107:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};

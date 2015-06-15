@@ -24,7 +24,8 @@ var commands =
     toggleChat: APP.UI.toggleChat,
     toggleContactList: APP.UI.toggleContactList,
     lockDown: lockDown,
-    dispose: dispose
+    dispose: dispose,
+    checkChromeExtension: checkChromeExtension
 };
 
 function lockDown(lockCode) {
@@ -34,11 +35,18 @@ function lockDown(lockCode) {
     APP.xmpp.setLockCode(lockCode);
 }
 
-function dispose(lockCode) {
+function dispose() {
     console.log('API.dispose');
     console.log(APP);
 
     APP.xmpp.disposeConference();
+}
+
+function checkChromeExtension() {
+    console.log('API.checkChromeExtension checking...');
+    APP.desktopsharing.checkExtInstalled(function (installed, updateRequired) {
+        sendMessage({type: "event", action: "result", event: "checkChromeExtension", result: { installed: installed, updateRequired, updateRequired }});
+    });
 }
 
 

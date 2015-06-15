@@ -310,6 +310,11 @@ module.exports = {
 
         eventEmitter.emit(DesktopSharingEventTypes.INIT);
     },
+    
+
+    checkExtInstalled: function (callback) {
+        checkExtInstalled(callback);
+    },
 
     addListener: function (listener, type)
     {
